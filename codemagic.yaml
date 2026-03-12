@@ -1,6 +1,6 @@
 workflows:
   ios-build:
-    name: iOS Build
+    name: iOS XCArchive Build
     max_build_duration: 60
     instance_type: mac_mini_m2
 
@@ -25,13 +25,59 @@ workflows:
 
       - name: Build iOS archive
         script: |
+          set -o pipefail
+          mkdir -p /tmp/xcodebuild_logs
           xcodebuild -project "$CM_BUILD_DIR/$XCODE_PROJECT" \
             -scheme "$XCODE_SCHEME" \
             -configuration Release \
             -sdk iphoneos \
             -archivePath "$CM_BUILD_DIR/App.xcarchive" \
-            archive
+            archive | tee /tmp/xcodebuild_logs/xcodebuild-archive.log
 
     artifacts:
       - $CM_BUILD_DIR/App.xcarchive
       - /tmp/xcodebuild_logs/*.log
+
+  ios-build-ipa:
+    name: iOS IPA Build
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+
+    environment:
+      node: 22
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: fr.lematosduvoisin.app
+      vars:
+        XCODE_PROJECT: ios/App/App.xcodeproj
+        XCODE_SCHEME: App
+
+    scripts:
+      - name: Install dependencies
+        script: |
+          npm ci
+
+      - name: Build mobile web assets
+        script: |
+          npm run build:mobile
+
+      - name: Sync Capacitor iOS
+        script: |
+          npx cap sync ios
+
+      - name: Set up iOS code signing
+        script: |
+          xcode-project use-profiles --project "$CM_BUILD_DIR/$XCODE_PROJECT"
+
+      - name: Build signed IPA
+        script: |
+          xcode-project build-ipa \
+            --project "$CM_BUILD_DIR/$XCODE_PROJECT" \
+            --scheme "$XCODE_SCHEME"
+
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - build/ios/xcarchive/*.xcarchive
+      - /tmp/xcodebuild_logs/*.log
+      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.app
+      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM
