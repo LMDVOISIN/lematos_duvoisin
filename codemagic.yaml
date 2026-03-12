@@ -2,30 +2,36 @@ workflows:
   ios-build:
     name: iOS Build
     max_build_duration: 60
+    instance_type: mac_mini_m2
 
     environment:
-      node: 18
+      node: 22
+      vars:
+        XCODE_PROJECT: ios/App/App.xcodeproj
+        XCODE_SCHEME: App
 
     scripts:
       - name: Install dependencies
         script: |
-          npm install
+          npm ci
 
-      - name: Build web project
+      - name: Build mobile web assets
         script: |
-          npm run build
+          npm run build:mobile
 
-      - name: Sync Capacitor
+      - name: Sync Capacitor iOS
         script: |
           npx cap sync ios
 
-      - name: Build iOS
+      - name: Build iOS archive
         script: |
-          xcodebuild -workspace ios/App/App.xcworkspace \
-          -scheme App \
-          -configuration Release \
-          -sdk iphoneos \
-          -archivePath $CM_BUILD_DIR/App.xcarchive archive
+          xcodebuild -project "$CM_BUILD_DIR/$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -configuration Release \
+            -sdk iphoneos \
+            -archivePath "$CM_BUILD_DIR/App.xcarchive" \
+            archive
 
     artifacts:
-      - build/ios/ipa/*.ipa
+      - $CM_BUILD_DIR/App.xcarchive
+      - /tmp/xcodebuild_logs/*.log

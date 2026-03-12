@@ -2,6 +2,9 @@
   "name": "lematos-duvoisin",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "dependencies": {
     "@capacitor/android": "^8.2.0",
     "@capacitor/app": "^8.0.1",
@@ -49,9 +52,9 @@
   },
   "scripts": {
     "start": "vite",
-    "build": "npm run build:seo",
+    "build": "npm run build:app",
     "build:app": "vite build --sourcemap",
-    "build:mobile": "vite build --sourcemap --outDir build-mobile --emptyOutDir false",
+    "build:mobile": "vite build --sourcemap --outDir build-mobile",
     "build:seo": "npm run seo:sitemap && npm run build:app && npm run seo:prerender-annonces && npm run seo:verify",
     "mobile:sync": "npm run build:mobile && npx cap sync",
     "mobile:android:add": "npx cap add android",
@@ -72,8 +75,8 @@
     "deploy:server": "npm run deploy:preflight && npm run deploy && node scripts/deploy-preflight.cjs --require-build && node scripts/deploy-sftp.cjs",
     "deploy:server:seo-refresh": "npm run deploy:preflight && npm run seo:refresh-annonces && node scripts/deploy-sftp.cjs",
     "deploy:server:seo-refresh:if-pending": "node scripts/deploy-seo-refresh-if-pending.cjs",
-    "deploy:vercel": "npm run build && echo 'Build complete! Deploy to Vercel using: npx vercel --prod'",
-    "deploy:build": "npm run build && echo 'Production SEO build complete! Upload the contents of the build/ folder to your web server via FTP or hosting provider file manager.'"
+    "deploy:vercel": "npm run build:seo && echo 'Build complete! Deploy to Vercel using: npx vercel --prod'",
+    "deploy:build": "npm run build:seo && echo 'Production SEO build complete! Upload the contents of the build/ folder to your web server via FTP or hosting provider file manager.'"
   },
   "eslintConfig": {
     "extends": [

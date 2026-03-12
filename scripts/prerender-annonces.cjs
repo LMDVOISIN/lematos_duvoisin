@@ -11,6 +11,11 @@ const DEFAULT_IMAGE = '/assets/images/android-chrome-192x192-1771179342850.png';
 const DEFAULT_SOCIAL_IMAGE_WIDTH = 1200;
 const DEFAULT_SOCIAL_IMAGE_HEIGHT = 630;
 
+function shouldSkipPrerenderOnMissingSupabase() {
+  const raw = String(process.env.SKIP_ANNONCES_PRERENDER || '').trim().toLowerCase();
+  return raw === '1' || raw === 'true' || raw === 'yes';
+}
+
 function readEnvFile(filePath) {
   if (!fs.existsSync(filePath)) return {};
   const content = fs.readFileSync(filePath, 'utf8');
@@ -533,7 +538,12 @@ async function main() {
     getEnvValue('VITE_SUPABASE_ANON_KEY', envFile);
 
   if (!supabaseUrl || !supabaseKey) {
-    throw new Error('Variables Supabase manquantes (VITE_SUPABASE_URL + key).');
+    const message = 'Variables Supabase manquantes (VITE_SUPABASE_URL + key). Utilisez `npm run build` pour un build CI/mobile, ou fournissez les variables Supabase pour `npm run build:seo`.';
+    if (shouldSkipPrerenderOnMissingSupabase()) {
+      console.warn(`[prerender] ${message} Prerender ignore car SKIP_ANNONCES_PRERENDER est actif.`);
+      return;
+    }
+    throw new Error(message);
   }
 
   const baseHtml = fs.readFileSync(BUILD_INDEX_HTML, 'utf8');
