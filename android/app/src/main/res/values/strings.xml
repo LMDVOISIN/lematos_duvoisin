@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Le Matos Du Voisin</string>
+    <string name="title_activity_main">Le Matos Du Voisin</string>
+    <string name="package_name">fr.lematosduvoisin.app</string>
+    <string name="custom_url_scheme">fr.lematosduvoisin.app</string>
+</resources>

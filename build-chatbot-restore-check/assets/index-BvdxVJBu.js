@@ -1,0 +1,1 @@
+import{j as i}from"./index-CbXn-vgW.js";import{M as t}from"./ManagedLegalPage-COrix57C.js";const l=()=>i.jsx(t,{slug:"politique-confidentialite",titleFallback:"Politique de confidentialite",fallbackSlugs:["confidentialite"]});export{l as default};

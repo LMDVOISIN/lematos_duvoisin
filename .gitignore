@@ -1,0 +1,15 @@
+.DS_Store
+node_modules
+.idea
+package-lock.json
+/build
+/build-mobile
+/build-verif*
+.env
+.env.*
+!.env.example
+!.env.production.example
+.vscode/*
+!.vscode/sftp.example.json
+.idea/
+vite.config.*s.*

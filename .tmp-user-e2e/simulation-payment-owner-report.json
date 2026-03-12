@@ -1,0 +1,33 @@
+{
+  "meta": {
+    "generatedAt": "2026-02-28T16:07:09.586Z",
+    "baseUrl": "https://www.lematosduvoisin.fr",
+    "annonceId": 346,
+    "startDate": "2026-02-27T23:00:00.000Z",
+    "endDate": "2026-03-09T23:00:00.000Z",
+    "locataire": "rabii@tellr.fr",
+    "proprietaire": "rabii@loeni.com"
+  },
+  "renterFlow": {
+    "hasPaymentSection": true,
+    "displayedRental": 33,
+    "totalToPay": 33,
+    "cautionAmount": 100,
+    "locationInCautionCard": 33,
+    "chargedToday": 133,
+    "payButtonAmount": 133,
+    "totalMatchesRental": true,
+    "cautionCardMatchesRental": true,
+    "chargedMatchesFormula": true,
+    "buttonMatchesCharged": true
+  },
+  "ownerFlow": {
+    "ownerAnnonceId": 348,
+    "hasTarificationTitle": true,
+    "hasOwnerPaymentFeeInfo": true,
+    "hasDeductionWording": true,
+    "hasOwnerEarningsEstimate": true,
+    "hasDetailedDeductions": true
+  },
+  "success": true
+}

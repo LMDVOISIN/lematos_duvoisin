@@ -1,0 +1,71 @@
+.legal-editor .ql-toolbar.ql-snow {
+  border-color: rgb(226 232 240);
+  border-radius: 0.5rem 0.5rem 0 0;
+}
+
+.legal-editor .ql-container.ql-snow {
+  border-color: rgb(226 232 240);
+  border-radius: 0 0 0.5rem 0.5rem;
+  min-height: 32rem;
+}
+
+.legal-editor .ql-editor {
+  min-height: 31rem;
+  font-size: 1rem;
+  line-height: 1.6;
+}
+
+.legal-editor .ql-snow .ql-picker.ql-font .ql-picker-label::before,
+.legal-editor .ql-snow .ql-picker.ql-font .ql-picker-item::before {
+  content: attr(data-value);
+}
+
+.legal-editor .ql-snow .ql-picker.ql-font .ql-picker-label:not([data-value])::before,
+.legal-editor .ql-snow .ql-picker.ql-font .ql-picker-item:not([data-value])::before {
+  content: 'Calibri';
+}
+
+.legal-editor .ql-snow .ql-picker.ql-font .ql-picker-item[data-value='Arial']::before,
+.legal-editor .ql-snow .ql-picker.ql-font .ql-picker-label[data-value='Arial']::before {
+  font-family: Arial, sans-serif;
+}
+
+.legal-editor .ql-snow .ql-picker.ql-font .ql-picker-item[data-value='Calibri']::before,
+.legal-editor .ql-snow .ql-picker.ql-font .ql-picker-label[data-value='Calibri']::before {
+  font-family: Calibri, sans-serif;
+}
+
+.legal-editor .ql-snow .ql-picker.ql-font .ql-picker-item[data-value='Cambria']::before,
+.legal-editor .ql-snow .ql-picker.ql-font .ql-picker-label[data-value='Cambria']::before {
+  font-family: Cambria, serif;
+}
+
+.legal-editor .ql-snow .ql-picker.ql-font .ql-picker-item[data-value='Georgia']::before,
+.legal-editor .ql-snow .ql-picker.ql-font .ql-picker-label[data-value='Georgia']::before {
+  font-family: Georgia, serif;
+}
+
+.legal-editor .ql-snow .ql-picker.ql-font .ql-picker-item[data-value='Tahoma']::before,
+.legal-editor .ql-snow .ql-picker.ql-font .ql-picker-label[data-value='Tahoma']::before {
+  font-family: Tahoma, sans-serif;
+}
+
+.legal-editor .ql-snow .ql-picker.ql-font .ql-picker-item[data-value='Times New Roman']::before,
+.legal-editor .ql-snow .ql-picker.ql-font .ql-picker-label[data-value='Times New Roman']::before {
+  font-family: 'Times New Roman', serif;
+}
+
+.legal-editor .ql-snow .ql-picker.ql-font .ql-picker-item[data-value='Verdana']::before,
+.legal-editor .ql-snow .ql-picker.ql-font .ql-picker-label[data-value='Verdana']::before {
+  font-family: Verdana, sans-serif;
+}
+
+.legal-editor .ql-snow .ql-picker.ql-size .ql-picker-label::before,
+.legal-editor .ql-snow .ql-picker.ql-size .ql-picker-item::before {
+  content: attr(data-value);
+}
+
+.legal-editor .ql-snow .ql-picker.ql-size .ql-picker-label:not([data-value])::before,
+.legal-editor .ql-snow .ql-picker.ql-size .ql-picker-item:not([data-value])::before {
+  content: '16px';
+}

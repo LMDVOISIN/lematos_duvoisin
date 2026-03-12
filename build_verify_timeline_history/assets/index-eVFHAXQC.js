@@ -1,0 +1,1 @@
+import{j as e}from"./index-URlIfvqX.js";import{M as t}from"./ManagedLegalPage-GZ9cSEZj.js";import"./legalPagesConfig-DktWH8t3.js";const s=()=>e.jsx(t,{slug:"cgv",titleFallback:"Conditions Generales de Vente (CGV)"});export{s as default};

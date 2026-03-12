@@ -1,0 +1,1 @@
+import{j as t}from"./index-5vXIC-4v.js";import{M as a}from"./ManagedLegalPage-Peu42Tf-.js";import"./legalPagesConfig-DktWH8t3.js";const i=()=>t.jsx(a,{slug:"cgu",titleFallback:"Conditions Generales d'Utilisation (CGU)"});export{i as default};

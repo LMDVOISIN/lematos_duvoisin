@@ -1,0 +1,1 @@
+import{j as e}from"./index-URlIfvqX.js";import{M as s}from"./ManagedLegalPage-GZ9cSEZj.js";import"./legalPagesConfig-DktWH8t3.js";const o=()=>e.jsx(s,{slug:"mentions-legales",titleFallback:"Mentions legales"});export{o as default};

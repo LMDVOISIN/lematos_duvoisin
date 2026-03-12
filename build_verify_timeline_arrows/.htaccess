@@ -1,0 +1,12 @@
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+
+  # Laisser Apache servir les fichiers/dossiers reels (assets, sitemap, pages prerendues /location/.../index.html)
+  RewriteCond %{REQUEST_FILENAME} -f [OR]
+  RewriteCond %{REQUEST_FILENAME} -d
+  RewriteRule ^ - [L]
+
+  # Fallback SPA pour les routes React restantes
+  RewriteRule ^ index.html [L]
+</IfModule>

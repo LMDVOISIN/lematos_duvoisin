@@ -1,0 +1,1 @@
+import{j as i}from"./index-URlIfvqX.js";import{M as t}from"./ManagedLegalPage-GZ9cSEZj.js";import"./legalPagesConfig-DktWH8t3.js";const o=()=>i.jsx(t,{slug:"politique-confidentialite",titleFallback:"Politique de confidentialite",fallbackSlugs:["confidentialite"]});export{o as default};
