@@ -1,5 +1,11 @@
 import { supabase } from '../lib/supabase';
 
+const normalizeMirrorScenarioFields = (scenarioData = {}) => ({
+  mirror_group_key: scenarioData?.mirrorGroupKey?.trim() || null,
+  mirror_role: scenarioData?.mirrorRole || null,
+  program_family: scenarioData?.programFamily || null
+});
+
 const userTestingService = {
   // ============ USER TESTERS ============
   
@@ -93,6 +99,19 @@ const userTestingService = {
     }
   },
 
+  async getMirrorStartState(testerId) {
+    try {
+      const { data, error } = await supabase?.rpc('get_test_mirror_start_state', {
+        p_tester_id: testerId
+      });
+
+      if (error) throw error;
+      return { data, error: null };
+    } catch (error) {
+      return { data: null, error };
+    }
+  },
+
   async getScenarioById(scenarioId) {
     try {
       const { data, error } = await supabase?.from('test_scenarios')?.select('*')?.eq('id', scenarioId)?.single();
@@ -112,7 +131,8 @@ const userTestingService = {
           expected_result: scenarioData?.expectedResult,
           instructions: scenarioData?.instructions,
           pages: scenarioData?.pages,
-          is_active: Boolean(scenarioData?.isActive)
+          is_active: Boolean(scenarioData?.isActive),
+          ...normalizeMirrorScenarioFields(scenarioData)
         })?.select()?.single();
 
       if (error) throw error;
@@ -131,6 +151,7 @@ const userTestingService = {
           instructions: scenarioData?.instructions,
           pages: scenarioData?.pages,
           is_active: scenarioData?.isActive,
+          ...normalizeMirrorScenarioFields(scenarioData),
           updated_at: new Date()?.toISOString()
         })?.eq('id', scenarioId)?.select()?.single();
 
@@ -155,13 +176,15 @@ const userTestingService = {
   // ============ TEST SESSIONS ============
   
   async createSession(testerId, scenarioId) {
+    return userTestingService?.startMirrorSession(testerId, scenarioId);
+  },
+
+  async startMirrorSession(testerId, selectedReferenceScenarioId = null) {
     try {
-      const { data, error } = await supabase?.from('test_sessions')?.insert({
-          tester_id: testerId,
-          scenario_id: scenarioId,
-          status: 'in_progress',
-          started_at: new Date()?.toISOString()
-        })?.select()?.single();
+      const { data, error } = await supabase?.rpc('start_test_mirror_session', {
+        p_tester_id: testerId,
+        p_selected_reference_scenario_id: selectedReferenceScenarioId || null
+      });
 
       if (error) throw error;
       return { data, error: null };
@@ -226,6 +249,52 @@ const userTestingService = {
     }
   },
 
+  async getCurrentMirrorCampaignSummary() {
+    try {
+      let { data: campaign, error: campaignError } = await supabase?.from('test_mirror_campaigns')?.select('*')?.eq('is_current', true)?.order('created_at', { ascending: false })?.limit(1)?.maybeSingle();
+
+      if (campaignError && campaignError?.code !== 'PGRST116') throw campaignError;
+
+      let rounds = [];
+
+      if (campaign?.id) {
+        const { data: roundsData, error: roundsError } = await supabase?.from('test_mirror_rounds')?.select('*')?.eq('campaign_id', campaign?.id)?.order('round_number', { ascending: true });
+
+        if (roundsError) throw roundsError;
+        rounds = roundsData || [];
+      }
+
+      return {
+        data: {
+          campaign: campaign || null,
+          rounds
+        },
+        error: null
+      };
+    } catch (error) {
+      return {
+        data: {
+          campaign: null,
+          rounds: []
+        },
+        error
+      };
+    }
+  },
+
+  async startNewMirrorCampaign(label = '') {
+    try {
+      const { data, error } = await supabase?.rpc('start_new_test_mirror_campaign', {
+        p_label: label?.trim() || null
+      });
+
+      if (error) throw error;
+      return { data, error: null };
+    } catch (error) {
+      return { data: null, error };
+    }
+  },
+
   // ============ PAGE RESPONSES ============
   
   async savePageResponse(responseData) {
@@ -256,6 +325,22 @@ const userTestingService = {
       return { data: data || [], error: null };
     } catch (error) {
       return { data: [], error };
+    }
+  },
+
+  async updatePageResponse(responseId, responseData) {
+    try {
+      const { data, error } = await supabase?.from('page_responses')?.update({
+          exit_questionnaire: responseData?.exitQuestionnaire,
+          perceived_info: responseData?.perceivedInfo,
+          next_action_understood: responseData?.nextActionUnderstood,
+          time_spent_seconds: responseData?.timeSpentSeconds
+        })?.eq('id', responseId)?.select()?.single();
+
+      if (error) throw error;
+      return { data, error: null };
+    } catch (error) {
+      return { data: null, error };
     }
   },
 
@@ -338,6 +423,151 @@ const userTestingService = {
       return { data: data || [], error: null };
     } catch (error) {
       return { data: [], error };
+    }
+  },
+
+  // ============ EMERGENCY HELP CHAT ============
+
+  async getLatestEmergencyRequestForSession(sessionId) {
+    try {
+      const baseQuery = () => supabase?.from('test_emergency_requests')?.select(`
+          *,
+          session:test_sessions(
+            id,
+            tester:user_testers(email, protocol_group, system, screen_type, browser),
+            scenario:test_scenarios(title, objective)
+          )
+        `)?.eq('session_id', sessionId)?.order('last_message_at', { ascending: false })?.limit(1);
+
+      let { data, error } = await baseQuery()?.neq('status', 'resolved')?.maybeSingle();
+
+      if (!data && (!error || error?.code === 'PGRST116')) {
+        const fallbackResult = await baseQuery()?.maybeSingle();
+        data = fallbackResult?.data;
+        error = fallbackResult?.error;
+      }
+
+      if (error && error?.code !== 'PGRST116') throw error;
+      return { data, error: null };
+    } catch (error) {
+      return { data: null, error };
+    }
+  },
+
+  async getAllEmergencyRequests() {
+    try {
+      const { data, error } = await supabase?.from('test_emergency_requests')?.select(`
+          *,
+          session:test_sessions(
+            id,
+            started_at,
+            completed_at,
+            tester:user_testers(email, protocol_group, system, screen_type, browser),
+            scenario:test_scenarios(title, objective)
+          )
+        `)?.order('last_message_at', { ascending: false });
+
+      if (error) throw error;
+      return { data: data || [], error: null };
+    } catch (error) {
+      return { data: [], error };
+    }
+  },
+
+  async getEmergencyRequestMessages(requestId) {
+    try {
+      const { data, error } = await supabase?.from('test_emergency_messages')?.select('*')?.eq('request_id', requestId)?.order('created_at', { ascending: true });
+
+      if (error) throw error;
+      return { data: data || [], error: null };
+    } catch (error) {
+      return { data: [], error };
+    }
+  },
+
+  async createEmergencyRequest(requestData) {
+    try {
+      const { data: authData } = await supabase?.auth?.getUser();
+      const senderUserId = authData?.user?.id || null;
+
+      const { data: request, error: requestError } = await supabase?.from('test_emergency_requests')?.insert({
+          session_id: requestData?.sessionId,
+          page_url: requestData?.pageUrl,
+          status: 'open'
+        })?.select(`
+          *,
+          session:test_sessions(
+            id,
+            tester:user_testers(email, protocol_group, system, screen_type, browser),
+            scenario:test_scenarios(title, objective)
+          )
+        `)?.single();
+
+      if (requestError) throw requestError;
+
+      const { data: message, error: messageError } = await supabase?.from('test_emergency_messages')?.insert({
+          request_id: request?.id,
+          sender_role: 'participant',
+          sender_user_id: senderUserId,
+          content: requestData?.content
+        })?.select()?.single();
+
+      if (messageError) throw messageError;
+
+      return { data: { request, message }, error: null };
+    } catch (error) {
+      return { data: null, error };
+    }
+  },
+
+  async sendEmergencyMessage(requestId, content, senderRole = 'participant') {
+    try {
+      const { data: authData } = await supabase?.auth?.getUser();
+      const senderUserId = authData?.user?.id || null;
+
+      const { data, error } = await supabase?.from('test_emergency_messages')?.insert({
+          request_id: requestId,
+          sender_role: senderRole,
+          sender_user_id: senderUserId,
+          content
+        })?.select()?.single();
+
+      if (error) throw error;
+      return { data, error: null };
+    } catch (error) {
+      return { data: null, error };
+    }
+  },
+
+  async updateEmergencyRequestStatus(requestId, status) {
+    try {
+      const updates = { status };
+
+      if (status === 'observer_joined') {
+        updates.observer_joined_at = new Date()?.toISOString();
+      }
+
+      if (status === 'resolved') {
+        updates.resolved_at = new Date()?.toISOString();
+      } else {
+        updates.resolved_at = null;
+      }
+
+      const { data, error } = await supabase?.from('test_emergency_requests')?.update(updates)?.eq('id', requestId)?.select(`
+          *,
+          session:test_sessions(
+            id,
+            started_at,
+            completed_at,
+            tester:user_testers(email, protocol_group, system, screen_type, browser),
+            scenario:test_scenarios(title, objective)
+          )
+        `)?.single();
+
+      if (error) throw error;
+      return { data, error: null };
+    } catch (error) {
+      return { data: null, error };
     }
   },
 

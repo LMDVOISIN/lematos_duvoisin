@@ -810,6 +810,62 @@ INSERT INTO public.test_scenarios ("id", "title", "objective", "expected_result"
 ON CONFLICT DO NOTHING;
 SELECT COUNT(*) AS test_scenarios_count FROM public.test_scenarios;
 
+UPDATE public.test_scenarios
+SET program_family = 'successful'::public.test_scenario_program_family
+WHERE id IN (
+  'd6235dc4-5e96-49c1-8b4a-0f04a83a41c3',
+  '5ae4e63b-6655-4d55-a2ef-966e3786c252',
+  '461abaf3-b7fd-48f9-883b-0622b5dbae48',
+  '999eee41-5324-437d-9ce3-7022b27f03fb',
+  'baeab87e-dc97-42b7-9c7e-842eac638429',
+  '85978be1-15db-590b-aaba-01d40423964a'
+);
+
+UPDATE public.test_scenarios
+SET program_family = 'renter_failure'::public.test_scenario_program_family
+WHERE id IN (
+  '53572f5e-c6d0-5641-9e64-f3290812b301',
+  'c4c99f8b-b490-5252-9d90-76e35f6d6aec',
+  '0ea1478a-32f4-55ce-a02f-6d2a19e30955',
+  '8134a5ac-3f1c-52cb-8e61-823a854af8c2',
+  '4f6a1f27-9c43-5653-a6c9-ffe28c5777bb',
+  '21f682d4-801e-50db-afef-3635a9631445',
+  '7193b2d9-4b39-5aab-b4bc-120b0f9f8bda',
+  'd0b19810-8307-52b3-9e74-d3554f5fed9e',
+  'a2ef55a6-5f1c-5181-a838-8c1c44f826bd'
+);
+
+UPDATE public.test_scenarios
+SET program_family = 'owner_failure'::public.test_scenario_program_family
+WHERE id IN (
+  'a0271135-9d3c-5a48-82c5-af0c61f605a7',
+  '0d79cf47-6fa2-58d8-95e9-3ce557b4c1ac',
+  'c12cb9d2-c7d6-51f8-bbb8-8669b956becf',
+  '09194741-5876-5991-8192-4223836213dc',
+  '3a65fc08-f039-5bc7-9f50-02b48b1cee91',
+  '61d04afd-a659-5b0a-a08a-536f9c9288c8',
+  '37e6a06d-c5a7-5c47-abc3-066fb5649829',
+  '58ec0c9d-785f-5265-9177-08d905d58627'
+);
+
+UPDATE public.test_scenarios
+SET program_family = 'transversal_incident'::public.test_scenario_program_family
+WHERE id IN (
+  '67701085-bc2e-503b-919b-62dda242a7fe',
+  '8bba0700-30fb-5199-835e-97e0a180b678',
+  '17b6097b-c77f-53ba-bc14-43b2f506654c',
+  '08b87852-3e54-5b93-8a13-a46027b9b76b',
+  '8b655eb2-0868-574c-a1c1-f2376d7b83b9',
+  'fbd425cf-9bc5-51ee-9937-7bee36e0e580',
+  '92ac0009-df9e-54d4-a67a-d386b117f281',
+  '219217c5-87c4-5fed-b5cd-a66bdf13ffcc',
+  '2ccc75b3-860a-5f15-a45b-1a4efa8637ba'
+);
+
+UPDATE public.test_scenarios
+SET program_family = NULL
+WHERE id = 'af358c11-4426-4829-bbd5-4303af621baa';
+
 
 -- =============================================
 -- annonces (7 rows)
