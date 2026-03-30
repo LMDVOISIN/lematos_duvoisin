@@ -6,11 +6,18 @@ workflows:
 
     environment:
       node: 22
+      groups:
+        - app_env
       vars:
         XCODE_PROJECT: ios/App/App.xcodeproj
         XCODE_SCHEME: App
 
     scripts:
+      - name: Validate required app environment
+        script: |
+          test -n "$VITE_SUPABASE_URL" || { echo "Missing VITE_SUPABASE_URL"; exit 1; }
+          test -n "$VITE_SUPABASE_ANON_KEY" || { echo "Missing VITE_SUPABASE_ANON_KEY"; exit 1; }
+
       - name: Install dependencies
         script: |
           npm ci
@@ -55,6 +62,8 @@ workflows:
 
     environment:
       node: 22
+      groups:
+        - app_env
       ios_signing:
         distribution_type: app_store
         bundle_identifier: fr.lematosduvoisin.app
@@ -63,6 +72,11 @@ workflows:
         XCODE_SCHEME: App
 
     scripts:
+      - name: Validate required app environment
+        script: |
+          test -n "$VITE_SUPABASE_URL" || { echo "Missing VITE_SUPABASE_URL"; exit 1; }
+          test -n "$VITE_SUPABASE_ANON_KEY" || { echo "Missing VITE_SUPABASE_ANON_KEY"; exit 1; }
+
       - name: Install dependencies
         script: |
           npm ci
