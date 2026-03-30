@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
-import { AlertTriangle, BarChart3, FileText, Layers, MessageSquare, Users } from 'lucide-react';
+import { AlertTriangle, BarChart3, FileText, Layers, LifeBuoy, MessageSquare, ShieldCheck, Users } from 'lucide-react';
 
 import ConfusionMapTab from './components/ConfusionMapTab';
 import DebriefsTab from './components/DebriefsTab';
+import EmergencyRequestsTab from './components/EmergencyRequestsTab';
 import QuestionnaireAnalysisTab from './components/QuestionnaireAnalysisTab';
 import ReportsTab from './components/ReportsTab';
 import ScenariosTab from './components/ScenariosTab';
 import SessionsTab from './components/SessionsTab';
 import TestersTab from './components/TestersTab';
+import VerificationTab from './components/VerificationTab';
 
 const AdminTestResultsDashboard = () => {
   const [activeTab, setActiveTab] = useState('sessions');
@@ -17,9 +19,11 @@ const AdminTestResultsDashboard = () => {
     { id: 'confusion', label: 'Carte de confusion', icon: FileText, component: ConfusionMapTab },
     { id: 'questionnaires', label: 'Questionnaires', icon: MessageSquare, component: QuestionnaireAnalysisTab },
     { id: 'reports', label: 'Signalements', icon: AlertTriangle, component: ReportsTab },
+    { id: 'emergency', label: 'Urgences', icon: LifeBuoy, component: EmergencyRequestsTab },
     { id: 'debriefs', label: 'Comptes rendus', icon: FileText, component: DebriefsTab },
     { id: 'testers', label: 'Participants', icon: Users, component: TestersTab },
-    { id: 'scenarios', label: 'Parcours', icon: Layers, component: ScenariosTab }
+    { id: 'scenarios', label: 'Parcours', icon: Layers, component: ScenariosTab },
+    { id: 'verifications', label: 'Vérifications', icon: ShieldCheck, component: VerificationTab }
   ];
 
   const ActiveComponent = tabs?.find((onglet) => onglet?.id === activeTab)?.component;

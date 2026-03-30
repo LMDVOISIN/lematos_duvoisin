@@ -1,5 +1,24 @@
 ﻿import { supabase } from '../lib/supabase';
 
+function extractEmailAddress(value) {
+  const rawValue = String(value || '').trim();
+  if (!rawValue) return '';
+
+  const angleMatch = rawValue.match(/<([^>]+)>/);
+  const candidate = (angleMatch?.[1] || rawValue).replace(/^mailto:/i, '').trim();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(candidate) ? candidate : '';
+}
+
+function normalizeEmailRecipients(to) {
+  const values = Array.isArray(to) ? to : [to];
+  return [...new Set(
+    values
+      .flatMap((value) => String(value || '').split(/[;,]/))
+      .map(extractEmailAddress)
+      .filter(Boolean)
+  )];
+}
+
 async function parseEdgeFunctionErrorMessage(error) {
   const baseMessage = error?.message || 'Erreur Edge Function';
   const context = error?.context;
@@ -99,6 +118,7 @@ export async function sendEmail({
   textBody
 }) {
   try {
+    const normalizedRecipients = normalizeEmailRecipients(to);
     const resolvedTemplateKey = templateKey || template;
     const resolvedVariables = {
       ...(data && typeof data === 'object' ? data : {}),
@@ -145,7 +165,7 @@ export async function sendEmail({
       if (templateError) {
         console.error(`Modele de courriel '${resolvedTemplateKey}' introuvable :`, templateError);
         await logFailedEmail(
-          to,
+          normalizedRecipients,
           resolvedTemplateKey,
           resolvedVariables,
           `Modele introuvable : ${templateError?.message}`,
@@ -164,15 +184,15 @@ export async function sendEmail({
       finalTextBody = finalTextBody || templateRow?.body_text;
     }
 
-    if (!to || !finalSubject || !finalHtmlBody) {
+    if (normalizedRecipients?.length === 0 || !finalSubject || !finalHtmlBody) {
       const error = 'Champs requis manquants : destinataire, sujet et corps HTML';
       console.error(error);
-      await logFailedEmail(to, resolvedTemplateKey, resolvedVariables, error, finalSubject);
+      await logFailedEmail(normalizedRecipients, resolvedTemplateKey, resolvedVariables, error, finalSubject);
       return { success: false, error };
     }
 
     const functionBody = {
-      to,
+      to: normalizedRecipients,
       subject: finalSubject,
       htmlBody: finalHtmlBody,
       textBody: finalTextBody,
@@ -200,12 +220,12 @@ export async function sendEmail({
 
       if (error) {
         console.error('Erreur d\'envoi de courriel :', errorMessage, error);
-        await logFailedEmail(to, resolvedTemplateKey, resolvedVariables, errorMessage, finalSubject);
+        await logFailedEmail(normalizedRecipients, resolvedTemplateKey, resolvedVariables, errorMessage, finalSubject);
         return { success: false, error: errorMessage };
       }
     }
 
-    await logSuccessfulEmail(to, resolvedTemplateKey, resolvedVariables, {
+    await logSuccessfulEmail(normalizedRecipients, resolvedTemplateKey, resolvedVariables, {
       subject: finalSubject,
       providerMessageId: invokeData?.messageId
     });
@@ -213,7 +233,7 @@ export async function sendEmail({
     return { success: true, messageId: invokeData?.messageId };
   } catch (error) {
     console.error('Erreur inattendue de courriel :', error);
-    await logFailedEmail(to, templateKey || template, {
+    await logFailedEmail(normalizeEmailRecipients(to), templateKey || template, {
       ...(data && typeof data === 'object' ? data : {}),
       ...(variables && typeof variables === 'object' ? variables : {})
     }, error?.message, subject);
@@ -263,11 +283,19 @@ export async function sendTestEmail(to, templateKey) {
     templateKey,
     variables: {
       user_name: 'Utilisateur d\'essai',
+      user_email: 'utilisateur.test@lematosduvoisin.fr',
       annonce_title: 'Equipement d\'essai',
       start_date: '2026-03-01',
       end_date: '2026-03-05',
       total_price: '150',
-      reservation_url: window.location?.origin + '/mes-reservations'
+      reservation_url: window.location?.origin + '/mes-reservations',
+      document_label: "piece d'identite",
+      file_name: 'piece-identite-test.jpg',
+      uploaded_at: '27/03/2026 11:30',
+      reviewed_at: '27/03/2026 12:00',
+      rejection_reason: 'Le verso est manquant.',
+      admin_url: window.location?.origin + '/administration-gestion-utilisateurs?tab=identity',
+      documents_url: window.location?.origin + '/profil-documents-utilisateur'
     }
   });
 }

@@ -1,11 +1,10 @@
 ﻿import React, { useEffect, useMemo, useState } from 'react';
-import Header from '../../components/navigation/Header';
-import Footer from '../../components/Footer';
 import Icon from '../../components/AppIcon';
 import Button from '../../components/ui/Button';
 import { useAuth } from '../../contexts/AuthContext';
 import notificationService from '../../services/notificationService';
 import toast from 'react-hot-toast';
+import { ActionCard, ActionHero, ActionPageShell } from '../../components/page/ActionPageLayout';
 
 const createDefaultPreferences = () => ({
   bookingRequests: { email: true, push: true, sms: false },
@@ -39,7 +38,9 @@ const TYPE_META = {
   new_reservation: { icon: 'Calendar', title: 'Nouvelle réservation', actionLabel: 'Voir mes réservations', actionLink: '/mes-reservations' },
   document_uploaded: { icon: 'FileText', title: 'Document téléversé', actionLabel: 'Voir mes documents', actionLink: '/profil-documents-utilisateur' },
   annonce_approved: { icon: 'CheckCircle', title: 'Annonce validée', actionLabel: 'Voir mes annonces', actionLink: '/mes-annonces' },
-  annonce_rejected: { icon: 'XCircle', title: 'Annonce refusée', actionLabel: 'Voir mes annonces', actionLink: '/mes-annonces' }
+  annonce_rejected: { icon: 'XCircle', title: 'Annonce refusée', actionLabel: 'Voir mes annonces', actionLink: '/mes-annonces' },
+  demande_approved: { icon: 'CheckCircle', title: 'Demande publiée', actionLabel: 'Voir mes annonces', actionLink: '/mes-annonces#demandes' },
+  demande_rejected: { icon: 'XCircle', title: 'Demande refusée', actionLabel: 'Voir mes annonces', actionLink: '/mes-annonces#demandes' }
 };
 
 const formatPayloadMessage = (payload) => {
@@ -131,7 +132,7 @@ const NotificationsCenter = () => {
       if (error) throw error;
       setPreferences(mergePreferencesWithDefaults(data));
     } catch (error) {
-      console.warn('Preferences notifications non disponibles (migration peut-etre non appliquee):', error?.message || error);
+      console.warn('Préférences notifications non disponibles (migration peut-être non appliquée):', error?.message || error);
       setPreferences(createDefaultPreferences());
     } finally {
       setPreferencesLoading(false);
@@ -200,7 +201,7 @@ const NotificationsCenter = () => {
       if (error) throw error;
 
       setNotifications((prev) => prev?.map((n) => ({ ...n, is_read: true })));
-      toast?.success('Toutes les notifications ont ete marquees comme lues');
+      toast?.success('Toutes les notifications ont été marquées comme lues');
     } catch (error) {
       console.error('Mark all as read error:', error);
       toast?.error('Erreur lors du marquage');
@@ -213,7 +214,7 @@ const NotificationsCenter = () => {
       if (error) throw error;
 
       setNotifications((prev) => prev?.filter((n) => n?.id !== id));
-      toast?.success('Notification supprimee');
+      toast?.success('Notification supprimée');
     } catch (error) {
       console.error('Delete notification error:', error);
       toast?.error('Erreur lors de la suppression');
@@ -232,7 +233,7 @@ const NotificationsCenter = () => {
 
   const handleSavePreferences = async () => {
     if (!user?.id) {
-      toast?.error('Veuillez vous connecter pour enregistrer vos preferences.');
+      toast?.error('Veuillez vous connecter pour enregistrer vos préférences.');
       return;
     }
 
@@ -241,59 +242,73 @@ const NotificationsCenter = () => {
       const { error } = await notificationService?.saveUserPreferences(user?.id, preferences);
       if (error) throw error;
 
-      toast?.success('Preferences de notifications enregistrees');
+      toast?.success('Préférences de notifications enregistrées');
       setShowPreferences(false);
     } catch (error) {
       console.error('Save notification preferences error:', error);
-      toast?.error(error?.message || "Impossible d'enregistrer les preferences");
+      toast?.error(error?.message || "Impossible d'enregistrer les préférences");
     } finally {
       setSavingPreferences(false);
     }
   };
 
   const preferenceCategories = [
-    { key: 'bookingRequests', label: 'Demandes de reservation', icon: 'Calendar' },
+    { key: 'bookingRequests', label: 'Demandes de réservation', icon: 'Calendar' },
     { key: 'messages', label: 'Messages', icon: 'MessageSquare' },
     { key: 'payments', label: 'Paiements', icon: 'CreditCard' },
     { key: 'reminders', label: 'Rappels', icon: 'Clock' },
     { key: 'documents', label: 'Documents', icon: 'FileText' },
-    { key: 'marketing', label: 'Offres et actualites', icon: 'Mail' }
+    { key: 'marketing', label: 'Offres et actualités', icon: 'Mail' }
   ];
 
   return (
-    <div className="min-h-screen flex flex-col bg-surface">
-      <Header />
-
-      <main className="flex-1 pt-20 pb-12">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="bg-white rounded-lg shadow-elevation-1 p-6 mb-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h1 className="text-2xl md:text-3xl font-bold text-foreground">Centre de notifications</h1>
-                <p className="text-muted-foreground mt-1">
-                  {unreadCount > 0
-                    ? `${unreadCount} notification${unreadCount > 1 ? 's' : ''} non lue${unreadCount > 1 ? 's' : ''}`
-                    : 'Toutes les notifications sont lues'}
-                </p>
+    <ActionPageShell
+      maxWidth="max-w-5xl"
+      hero={(
+        <ActionHero
+          eyebrow="Centre notifications"
+          title="Notifications"
+          subtitle={unreadCount > 0
+            ? `${unreadCount} notification${unreadCount > 1 ? 's' : ''} non lue${unreadCount > 1 ? 's' : ''}. Ouvrez celles qui demandent une action.`
+            : 'Tout est a jour. Filtrez ou ajustez vos preferences si besoin.'}
+          pills={[
+            { label: 'Non lues', icon: 'BellRing' },
+            { label: 'Filtres', icon: 'SlidersHorizontal' },
+            { label: 'Préférences', icon: 'Settings' }
+          ]}
+          tone="sky"
+        />
+      )}
+    >
+      <div className="space-y-6">
+        <ActionCard className="p-4 md:p-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="grid gap-2 sm:grid-cols-2">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700">
+                Filtres rapides
               </div>
-              <Button variant="outline" size="sm" onClick={() => setShowPreferences((prev) => !prev)}>
-                <Icon name="Settings" size={16} />
-                Preferences
-              </Button>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700">
+                Préférences
+              </div>
             </div>
+            <Button variant="outline" size="sm" onClick={() => setShowPreferences((prev) => !prev)}>
+              <Icon name="Settings" size={16} />
+              Préférences
+            </Button>
           </div>
+        </ActionCard>
 
           {showPreferences && (
             <div className="bg-white rounded-lg shadow-elevation-2 p-6 mb-6">
-              <h2 className="text-xl font-bold text-foreground mb-4">Preferences de notification</h2>
-              <p className="text-sm text-muted-foreground mb-6">
+              <h2 className="text-xl font-bold text-foreground mb-4">Préférences de notification</h2>
+              <p className="hidden text-sm text-muted-foreground mb-6">
                 Choisissez comment vous souhaitez recevoir vos notifications.
               </p>
 
               {preferencesLoading && (
                 <div className="mb-4 flex items-center gap-2 text-sm text-muted-foreground">
                   <Icon name="Loader2" size={16} className="animate-spin" />
-                  <span>Chargement des preferences...</span>
+                  <span>Chargement des préférences...</span>
                 </div>
               )}
 
@@ -342,7 +357,7 @@ const NotificationsCenter = () => {
                   Fermer
                 </Button>
                 <Button onClick={handleSavePreferences} loading={savingPreferences} disabled={preferencesLoading}>
-                  Enregistrer les preferences
+                  Enregistrer les préférences
                 </Button>
               </div>
             </div>
@@ -468,11 +483,8 @@ const NotificationsCenter = () => {
               ))
             )}
           </div>
-        </div>
-      </main>
-
-      <Footer />
-    </div>
+      </div>
+    </ActionPageShell>
   );
 };
 

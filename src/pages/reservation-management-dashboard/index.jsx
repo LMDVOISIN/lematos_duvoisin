@@ -1,12 +1,19 @@
 ﻿import React, { useEffect, useState } from 'react';
-import Header from '../../components/navigation/Header';
+import { useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import Footer from '../../components/Footer';
 import Icon from '../../components/AppIcon';
 import Select from '../../components/ui/Select';
 import ReservationCard from './components/ReservationCard';
 import ContractPreviewModal from './components/ContractPreviewModal';
 import ChatPopupModal from './components/ChatPopupModal';
+import ReservationAdjustmentModal from './components/ReservationAdjustmentModal';
+import toast from 'react-hot-toast';
+import {
+  ActionCard,
+  ActionEmptyState,
+  ActionHero,
+  ActionPageShell
+} from '../../components/page/ActionPageLayout';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import reservationService from '../../services/reservationService';
@@ -14,23 +21,45 @@ import storageService from '../../services/storageService';
 import messageService from '../../services/messageService';
 import inspectionService from '../../services/inspectionService';
 import { normalizeTimeValue } from '../../utils/timeSlots';
+import { computeOwnerNetEstimate } from '../../utils/pricingPolicy';
+import { getEarliestReservationStartDate } from '../../utils/reservationDateRules';
+import { isReservationPaymentConfirmed } from '../../utils/reservationStatus';
+import { buildAppRedirectUrl, redirectToExternalUrl } from '../../utils/nativeRuntime';
+import {
+  appendAdminVerificationParamsToPath,
+  isAdminVerificationScenario
+} from '../../utils/adminVerificationContext';
 
 const FALLBACK_IMAGE = '/assets/images/no_image.png';
-const PAID_RESERVATION_STATUSES = new Set(['paid', 'active', 'ongoing', 'completed']);
+const DEFAULT_STATUS_FILTER = 'open';
+const NON_TERMINAL_RESERVATION_STATUSES = new Set(['upcoming', 'ongoing']);
 
-const normalizeStatus = (status) => {
-  const normalizedStatus = String(status || '')?.toLowerCase();
-  if (!normalizedStatus) return 'pending';
-  if (['pending', 'accepted']?.includes(normalizedStatus)) return 'pending';
-  if (['paid', 'active', 'ongoing']?.includes(normalizedStatus)) return 'ongoing';
-  if (normalizedStatus === 'completed') return 'completed';
+const normalizeDateOnly = (value) => {
+  const parsedDate = value ? new Date(value) : null;
+  if (!parsedDate || Number.isNaN(parsedDate?.getTime())) return null;
+
+  parsedDate?.setHours(0, 0, 0, 0);
+  return parsedDate;
+};
+
+const normalizeStatus = (reservation) => {
+  const normalizedStatus = String(reservation?.status || '')?.toLowerCase();
+  const paymentConfirmed = isReservationPaymentConfirmed(reservation);
+  const today = normalizeDateOnly(new Date());
+  const startDate = normalizeDateOnly(reservation?.start_date);
+  const endDate = normalizeDateOnly(reservation?.end_date);
+
   if (
     ['refused', 'rejected', 'cancelled']?.includes(normalizedStatus)
     || normalizedStatus?.startsWith('cancelled')
   ) {
     return 'cancelled';
   }
-  return 'pending';
+  if (normalizedStatus === 'completed') return 'completed';
+  if (!paymentConfirmed) return 'pending';
+  if (endDate && today && endDate < today) return 'completed';
+  if (startDate && today && startDate > today) return 'upcoming';
+  return 'ongoing';
 };
 
 const resolvePhotoCandidate = (candidate) => {
@@ -112,11 +141,7 @@ const toDateOrNull = (value) => {
 
 const isDateReached = (date, now = new Date()) => Boolean(date && now >= date);
 
-const isReservationPaid = (reservation) => {
-  const status = String(reservation?.status || '')?.toLowerCase();
-  const paidAt = toDateOrNull(reservation?.paid_at || reservation?.tenant_payment_paid_at);
-  return Boolean(paidAt) || PAID_RESERVATION_STATUSES?.has(status);
-};
+const isReservationPaid = (reservation) => isReservationPaymentConfirmed(reservation);
 
 const loadApprovedIdentityUserIds = async (userIds = []) => {
   const normalizedUserIds = Array.from(
@@ -172,6 +197,56 @@ const combineDateAndTime = (dateValue, timeValue) => {
   return Number.isNaN(withTime?.getTime()) ? baseDate : withTime;
 };
 
+const normalizeAddressForComparison = (value = '') => String(value || '')
+  .toLowerCase()
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .replace(/[^a-z0-9\s]/g, ' ')
+  .replace(/\s+/g, ' ')
+  .trim();
+
+const buildReservationAddressLine = ({ address = '', postalCode = '', city = '' } = {}) => {
+  const normalizedAddress = String(address || '')?.trim();
+  const localityLine = [postalCode, city]?.filter(Boolean)?.join(' ')?.trim();
+
+  if (!normalizedAddress) return localityLine || null;
+  if (!localityLine) return normalizedAddress;
+
+  const comparableAddress = normalizeAddressForComparison(normalizedAddress);
+  const comparableLocality = normalizeAddressForComparison(localityLine);
+
+  if (comparableLocality && comparableAddress?.includes(comparableLocality)) {
+    return normalizedAddress;
+  }
+
+  return `${normalizedAddress}, ${localityLine}`;
+};
+
+const getSuggestedRebookingWindow = (reservation = {}) => {
+  const currentStartDate = toDateOrNull(reservation?.startDate || reservation?.start_date);
+  const currentEndDate = toDateOrNull(reservation?.endDate || reservation?.end_date);
+  const fallbackStartDate = getEarliestReservationStartDate();
+  const currentEndPlusOneDay = currentEndDate
+    ? new Date(currentEndDate.getFullYear(), currentEndDate.getMonth(), currentEndDate.getDate() + 1, 12, 0, 0, 0)
+    : null;
+
+  const suggestedStartDate = currentEndPlusOneDay && currentEndPlusOneDay > fallbackStartDate
+    ? currentEndPlusOneDay
+    : fallbackStartDate;
+
+  const reservationDurationDays = currentStartDate && currentEndDate
+    ? Math.max(1, Math.round((currentEndDate - currentStartDate) / (1000 * 60 * 60 * 24)) + 1)
+    : 1;
+
+  const suggestedEndDate = new Date(suggestedStartDate);
+  suggestedEndDate?.setDate(suggestedEndDate.getDate() + reservationDurationDays - 1);
+
+  return {
+    startDate: suggestedStartDate,
+    endDate: suggestedEndDate
+  };
+};
+
 const buildTimelineStep = ({
   id,
   event,
@@ -189,6 +264,7 @@ const buildTimelineStep = ({
 
 const buildTimeline = (reservation, viewerRole = 'owner') => {
   const status = String(reservation?.status || '')?.toLowerCase();
+  const derivedStatus = normalizeStatus(reservation);
   const depositStatus = String(reservation?.deposit_status || '')?.toLowerCase();
   const depositRefundStatus = String(reservation?.deposit_refund_status || '')?.toLowerCase();
   const pickupTimeStart = reservation?.pickup_time_start || reservation?.annonce?.pickup_time_start || null;
@@ -230,8 +306,8 @@ const buildTimeline = (reservation, viewerRole = 'owner') => {
   const plannedStartAt = combineDateAndTime(reservation?.start_date, pickupTimeStart || pickupTimeEnd);
   const plannedEndAt = combineDateAndTime(reservation?.end_date, returnTimeEnd || returnTimeStart);
 
-  const isCancelled = ['cancelled', 'rejected', 'refused']?.includes(status) || status?.startsWith('cancelled');
-  const isCompleted = status === 'completed';
+  const isCancelled = derivedStatus === 'cancelled';
+  const isCompleted = derivedStatus === 'completed';
   const isPaid = Boolean(paidAt) || ['paid', 'active', 'ongoing', 'completed']?.includes(status);
   const isRentalEnded = Boolean(plannedEndAt || endAt) && (isDateReached(plannedEndAt || endAt, now) || isCompleted);
 
@@ -240,6 +316,15 @@ const buildTimeline = (reservation, viewerRole = 'owner') => {
   const returnLabel = isRenterView ? 'Matériel retourne au propriétaire' : 'Matériel récupéré au retour';
   const checkinLabel = isRenterView ? 'État des lieux entrée validé' : 'État des lieux de remise validé';
   const checkoutLabel = isRenterView ? 'État des lieux sortie validé' : 'État des lieux de retour validé';
+  const paymentConfirmedLabel = isRenterView
+    ? 'Paiement location confirmé'
+    : 'Paiement locataire reçu et sécurisé';
+  const paymentPendingLabel = isRenterView
+    ? 'Paiement location à finaliser'
+    : 'Paiement locataire à finaliser';
+  const ownerPayoutLabel = isRenterView
+    ? 'Paiement propriétaire libéré'
+    : ((ownerPayoutReleasedAt || isCompleted) ? 'Versement propriétaire envoyé' : 'Versement propriétaire à venir');
   const cardDepositRecorded = isPaid || ['pending', 'held', 'authorized', 'released', 'captured']?.includes(depositStatus);
   const cautionPickupDone = Boolean(cardDepositRecorded);
   const checkinPickupDone = Boolean(checkinValidatedAt || startInspectionClosedAt);
@@ -275,7 +360,7 @@ const buildTimeline = (reservation, viewerRole = 'owner') => {
   if (isPaid) {
     pushTimelineStep({
       id: 'payment_confirmed',
-      event: 'Paiement location confirmé',
+      event: paymentConfirmedLabel,
       type: 'success',
       date: paidAt || updatedAt || createdAt,
       done: true
@@ -283,7 +368,7 @@ const buildTimeline = (reservation, viewerRole = 'owner') => {
   } else if (!isCancelled) {
     pushTimelineStep({
       id: 'payment_due',
-      event: 'Paiement location à finaliser',
+      event: paymentPendingLabel,
       type: 'warning',
       date: createdAt || updatedAt,
       done: false
@@ -418,7 +503,7 @@ const buildTimeline = (reservation, viewerRole = 'owner') => {
   if (ownerPayoutDate && !isCancelled) {
     pushTimelineStep({
       id: 'owner_payment_released',
-      event: 'Paiement propriétaire libéré',
+      event: ownerPayoutLabel,
       type: (ownerPayoutReleasedAt || isCompleted) ? 'success' : 'pending',
       date: ownerPayoutDate,
       done: Boolean(ownerPayoutReleasedAt || isCompleted)
@@ -477,6 +562,8 @@ const mapReservationToCard = (reservation, viewerRole = 'owner') => {
   );
   const paymentConfirmed = isReservationPaid(reservation);
   const identityApproved = Boolean(reservation?.identity_approved || reservation?.identityApproved);
+  const paidAt = reservation?.paid_at || reservation?.tenant_payment_paid_at || null;
+  const ownerPayoutReleasedAt = reservation?.owner_payout_released_at || reservation?.payment_released_at || null;
   const reservationAddress = String(
     reservation?.annonce?.address
     || reservation?.annonce?.adresse
@@ -493,10 +580,16 @@ const mapReservationToCard = (reservation, viewerRole = 'owner') => {
     || reservation?.annonce?.ville
     || ''
   )?.trim();
-  const reservationAddressLine = [
-    reservationAddress,
-    [reservationPostalCode, reservationCity]?.filter(Boolean)?.join(' ')
-  ]?.filter(Boolean)?.join(', ');
+  const reservationAddressLine = buildReservationAddressLine({
+    address: reservationAddress,
+    postalCode: reservationPostalCode,
+    city: reservationCity
+  });
+  const ownerNetAmount = computeOwnerNetEstimate({
+    rentalAmount: totalAmount
+  })?.ownerNetEstimate || 0;
+  const ownerPayoutAmount = Number.parseFloat(reservation?.owner_payout_amount ?? reservation?.ownerPayoutAmount ?? ownerNetAmount ?? 0);
+  const refundAmount = Number.parseFloat(reservation?.refund_amount ?? reservation?.refundAmount ?? 0);
 
   return {
     id: reservation?.id,
@@ -524,11 +617,19 @@ const mapReservationToCard = (reservation, viewerRole = 'owner') => {
     canRevealPickupAddress: !isRenterView || (paymentConfirmed && identityApproved),
     identityApproved,
     isPaid: paymentConfirmed,
-    status: normalizeStatus(reservation?.status),
+    status: normalizeStatus(reservation),
     totalAmount: Number.isFinite(totalAmount) ? totalAmount : 0,
+    ownerNetAmount: Number.isFinite(ownerPayoutAmount) ? ownerPayoutAmount : 0,
     cautionAmount: Number.isFinite(cautionAmount) ? cautionAmount : 0,
     cautionStatus: reservation?.deposit_status || reservation?.caution_status || 'pending',
     cautionMode: reservation?.caution_mode || reservation?.mode_caution || 'cb',
+    paidAt,
+    ownerPayoutReleasedAt,
+    ownerPayoutStatus: reservation?.owner_payout_status || reservation?.ownerPayoutStatus || null,
+    ownerPayoutAmount: Number.isFinite(ownerPayoutAmount) ? ownerPayoutAmount : 0,
+    ownerPayoutLastError: reservation?.owner_payout_last_error || reservation?.ownerPayoutLastError || null,
+    refundStatus: reservation?.refund_status || reservation?.refundStatus || null,
+    refundAmount: Number.isFinite(refundAmount) ? refundAmount : 0,
     startInspectionClosedAt: reservation?.start_inspection_closed_at || reservation?.startInspectionClosedAt || null,
     pickupHandoverConfirmedAt: reservation?.pickup_handover_confirmed_at || reservation?.pickupHandoverConfirmedAt || null,
     pickupRentalStartedAt: reservation?.pickup_rental_started_at || reservation?.pickupRentalStartedAt || null,
@@ -537,6 +638,7 @@ const mapReservationToCard = (reservation, viewerRole = 'owner') => {
     requestDate: reservation?.created_at || reservation?.updated_at || reservation?.start_date,
     timeline: buildTimeline(reservation, viewerRole),
     contractUrl: reservation?.contract_url || null,
+    adjustmentSummary: reservation?.adjustment_summary || reservation?.adjustmentSummary || null,
     rawStatus: reservation?.status,
     viewerRole
   };
@@ -546,7 +648,9 @@ const ReservationManagementDashboard = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { user, loading: authLoading } = useAuth();
-  const [statusFilter, setStatusFilter] = useState('all');
+  const isVerificationReservationScenario = isAdminVerificationScenario('booking_manage_reservations');
+  const isVerificationPickupScenario = isAdminVerificationScenario('booking_pickup_day');
+  const [statusFilter, setStatusFilter] = useState(DEFAULT_STATUS_FILTER);
   const [selectedReservation, setSelectedReservation] = useState(null);
   const [showContractModal, setShowContractModal] = useState(false);
   const [reservations, setReservations] = useState([]);
@@ -555,13 +659,21 @@ const ReservationManagementDashboard = () => {
   const [startingChatReservationId, setStartingChatReservationId] = useState(null);
   const [chatModalConversationId, setChatModalConversationId] = useState(null);
   const [chatModalReservation, setChatModalReservation] = useState(null);
+  const [chatModalDraftMessage, setChatModalDraftMessage] = useState('');
+  const [adjustmentModalReservation, setAdjustmentModalReservation] = useState(null);
+  const [adjustmentSubmitting, setAdjustmentSubmitting] = useState(false);
   const [pickupStepInFlight, setPickupStepInFlight] = useState({ reservationId: null, step: null });
+  const ownerCancellationSyncRef = useRef('');
   const requestedConversationId = String(searchParams?.get('conversation') || '')?.trim();
   const requestedAnnonceIdRaw = String(searchParams?.get('annonce') || '')?.trim();
   const requestedAnnonceId = requestedAnnonceIdRaw !== '' && Number.isFinite(Number(requestedAnnonceIdRaw))
     ? Number(requestedAnnonceIdRaw)
     : null;
   const requestedOtherUserId = String(searchParams?.get('other') || '')?.trim();
+  const ownerCancellationStatus = String(searchParams?.get('ownerCancellationStatus') || '')?.trim()?.toLowerCase();
+  const ownerCancellationSessionId = String(searchParams?.get('ownerCancellationSessionId') || '')?.trim();
+  const ownerCancellationReservationId = String(searchParams?.get('ownerCancellationReservationId') || '')?.trim();
+  const ownerCancellationAction = String(searchParams?.get('ownerCancellationAction') || '')?.trim()?.toLowerCase();
 
   const clearChatQueryParams = () => {
     if (
@@ -579,7 +691,178 @@ const ReservationManagementDashboard = () => {
     setSearchParams(nextParams, { replace: true });
   };
 
+  const clearOwnerCancellationQueryParams = () => {
+    if (
+      !searchParams?.get('ownerCancellationStatus')
+      && !searchParams?.get('ownerCancellationSessionId')
+      && !searchParams?.get('ownerCancellationReservationId')
+      && !searchParams?.get('ownerCancellationAction')
+    ) {
+      return;
+    }
+
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams?.delete('ownerCancellationStatus');
+    nextParams?.delete('ownerCancellationSessionId');
+    nextParams?.delete('ownerCancellationReservationId');
+    nextParams?.delete('ownerCancellationAction');
+    setSearchParams(nextParams, { replace: true });
+  };
+
   const loadReservations = async () => {
+    if (isVerificationReservationScenario || isVerificationPickupScenario) {
+      const today = new Date();
+      const tomorrow = new Date(today);
+      tomorrow.setDate(today.getDate() + 1);
+      const twoDaysLater = new Date(today);
+      twoDaysLater.setDate(today.getDate() + 2);
+
+      const verificationRows = isVerificationPickupScenario
+        ? [
+          {
+            id: 'verification-pickup-reservation',
+            annonce_id: 'verification-offer',
+            owner_id: user?.id || 'verification-owner',
+            renter_id: 'verification-renter',
+            start_date: today.toISOString(),
+            end_date: tomorrow.toISOString(),
+            start_inspection_closed_at: null,
+            pickup_handover_confirmed_at: null,
+            pickup_rental_started_at: null,
+            created_at: today.toISOString(),
+            status: 'active',
+            total_price: 38,
+            caution_amount: 250,
+            deposit_status: 'authorized',
+            identity_approved: true,
+            contract_url: '/verification/contracts/admin-check.pdf',
+            annonce: {
+              titre: 'Réservation jour J de vérification',
+              photos: [],
+              address: '12 rue de verification',
+              postal_code: '75002',
+              city: 'Paris',
+              caution: 250,
+              pickup_time_start: '09:00',
+              pickup_time_end: '11:00',
+              return_time_start: '18:00',
+              return_time_end: '19:00'
+            },
+            renter: {
+              pseudo: 'locataire_verification',
+              avatar_url: FALLBACK_IMAGE
+            },
+            owner: {
+              pseudo: 'proprietaire_verification',
+              avatar_url: FALLBACK_IMAGE
+            }
+          }
+        ]
+        : [
+          {
+            id: 'verification-upcoming-reservation',
+            annonce_id: 'verification-offer-1',
+            owner_id: user?.id || 'verification-owner',
+            renter_id: 'verification-renter-1',
+            start_date: tomorrow.toISOString(),
+            end_date: twoDaysLater.toISOString(),
+            created_at: today.toISOString(),
+            status: 'active',
+            total_price: 38,
+            caution_amount: 250,
+            deposit_status: 'authorized',
+            identity_approved: true,
+            contract_url: '/verification/contracts/admin-check.pdf',
+            annonce: {
+              titre: 'Reservation active de verification',
+              photos: [],
+              address: '12 rue de verification',
+              postal_code: '75002',
+              city: 'Paris',
+              caution: 250,
+              pickup_time_start: '09:00',
+              pickup_time_end: '11:00',
+              return_time_start: '18:00',
+              return_time_end: '19:00'
+            },
+            renter: {
+              pseudo: 'locataire_verification',
+              avatar_url: FALLBACK_IMAGE
+            },
+            owner: {
+              pseudo: 'proprietaire_verification',
+              avatar_url: FALLBACK_IMAGE
+            }
+          },
+          {
+            id: 'verification-completed-reservation',
+            annonce_id: 'verification-offer-2',
+            owner_id: user?.id || 'verification-owner',
+            renter_id: 'verification-renter-2',
+            start_date: new Date(today.getFullYear(), today.getMonth(), today.getDate() - 5).toISOString(),
+            end_date: new Date(today.getFullYear(), today.getMonth(), today.getDate() - 3).toISOString(),
+            created_at: new Date(today.getFullYear(), today.getMonth(), today.getDate() - 8).toISOString(),
+            completed_at: new Date(today.getFullYear(), today.getMonth(), today.getDate() - 3).toISOString(),
+            status: 'completed',
+            total_price: 55,
+            caution_amount: 150,
+            deposit_status: 'released',
+            identity_approved: true,
+            annonce: {
+              titre: 'Reservation terminee de verification',
+              photos: [],
+              address: '4 avenue du test',
+              postal_code: '69001',
+              city: 'Lyon',
+              caution: 150
+            },
+            renter: {
+              pseudo: 'locataire_termine',
+              avatar_url: FALLBACK_IMAGE
+            },
+            owner: {
+              pseudo: 'proprietaire_verification',
+              avatar_url: FALLBACK_IMAGE
+            }
+          },
+          {
+            id: 'verification-cancelled-reservation',
+            annonce_id: 'verification-offer-3',
+            owner_id: user?.id || 'verification-owner',
+            renter_id: 'verification-renter-3',
+            start_date: new Date(today.getFullYear(), today.getMonth(), today.getDate() - 2).toISOString(),
+            end_date: tomorrow.toISOString(),
+            created_at: new Date(today.getFullYear(), today.getMonth(), today.getDate() - 4).toISOString(),
+            status: 'cancelled',
+            total_price: 27,
+            caution_amount: 0,
+            deposit_status: 'none',
+            identity_approved: false,
+            annonce: {
+              titre: 'Reservation annulee de verification',
+              photos: [],
+              address: '8 place du scenario',
+              postal_code: '33000',
+              city: 'Bordeaux',
+              caution: 0
+            },
+            renter: {
+              pseudo: 'locataire_annule',
+              avatar_url: FALLBACK_IMAGE
+            },
+            owner: {
+              pseudo: 'proprietaire_verification',
+              avatar_url: FALLBACK_IMAGE
+            }
+          }
+        ];
+
+      setReservations(verificationRows.map((row) => mapReservationToCard(row, 'owner')));
+      setLoadError(null);
+      setLoading(false);
+      return;
+    }
+
     if (!user?.id) {
       setReservations([]);
       setLoading(false);
@@ -695,7 +978,79 @@ const ReservationManagementDashboard = () => {
   useEffect(() => {
     if (authLoading) return;
     loadReservations();
-  }, [user?.id, authLoading]);
+  }, [authLoading, isVerificationPickupScenario, isVerificationReservationScenario, user?.id]);
+
+  useEffect(() => {
+    if (!ownerCancellationStatus) return;
+    if (authLoading || !user?.id) return;
+
+    if (ownerCancellationStatus === 'cancel') {
+      toast?.error("Paiement des frais d'annulation annulé. La réservation reste maintenue: vous devez livrer l'objet loué et le locataire ne sera pas remboursé tant que les frais ne sont pas payés.");
+      clearOwnerCancellationQueryParams();
+      return;
+    }
+
+    if (ownerCancellationStatus !== 'success' || !ownerCancellationSessionId || !ownerCancellationReservationId) {
+      return;
+    }
+
+    const syncKey = `${ownerCancellationStatus}:${ownerCancellationSessionId}`;
+    if (ownerCancellationSyncRef?.current === syncKey) return;
+    ownerCancellationSyncRef.current = syncKey;
+
+    let isMounted = true;
+
+    const syncOwnerCancellation = async () => {
+      try {
+        setAdjustmentSubmitting(true);
+
+        const { data, error } = await reservationService?.syncOwnerReservationAdjustmentCheckout({
+          reservationId: ownerCancellationReservationId,
+          action: ownerCancellationAction || 'cancel_full',
+          sessionId: ownerCancellationSessionId
+        });
+
+        if (error) throw error;
+
+        if (!isMounted) return;
+
+        const refundAmount = Math.max(0, Number(data?.refundAmount || 0) || 0);
+        const ownerCancellationFeeAmount = Math.max(0, Number(data?.ownerCancellationFeeAmount || data?.cancellationFeeAmount || 0) || 0);
+
+        toast?.success(
+          String(data?.action || ownerCancellationAction || '') === 'cancel_full'
+            ? `Réservation annulée. Locataire remboursé : ${refundAmount.toFixed(2)} EUR. Frais propriétaire payés : ${ownerCancellationFeeAmount.toFixed(2)} EUR.`
+            : `Annulation partielle enregistrée. Locataire remboursé : ${refundAmount.toFixed(2)} EUR. Frais propriétaire payés : ${ownerCancellationFeeAmount.toFixed(2)} EUR.`
+        );
+
+        setAdjustmentModalReservation(null);
+        await loadReservations();
+      } catch (error) {
+        console.error('Erreur synchronisation annulation proprietaire:', error);
+        if (isMounted) {
+          toast?.error(error?.message || "Impossible de finaliser l'annulation propriétaire pour le moment.");
+        }
+      } finally {
+        if (isMounted) {
+          setAdjustmentSubmitting(false);
+          clearOwnerCancellationQueryParams();
+        }
+      }
+    };
+
+    syncOwnerCancellation();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [
+    ownerCancellationAction,
+    ownerCancellationReservationId,
+    ownerCancellationSessionId,
+    ownerCancellationStatus,
+    authLoading,
+    user?.id
+  ]);
 
   useEffect(() => {
     if (!requestedConversationId) return;
@@ -724,6 +1079,7 @@ const ReservationManagementDashboard = () => {
 
     setChatModalConversationId(requestedConversationId);
     setChatModalReservation(reservationFromQuery);
+    setChatModalDraftMessage('');
     clearChatQueryParams();
   }, [
     requestedConversationId,
@@ -735,24 +1091,27 @@ const ReservationManagementDashboard = () => {
     reservations
   ]);
 
-  const filteredReservations = statusFilter === 'all'
-    ? reservations
-    : reservations?.filter((reservation) => reservation?.status === statusFilter);
+  const filteredReservations = reservations?.filter((reservation) => {
+    if (statusFilter === 'all') return true;
+    if (statusFilter === 'open') return NON_TERMINAL_RESERVATION_STATUSES?.has(reservation?.status);
+    return reservation?.status === statusFilter;
+  });
 
   const statusOptions = [
-    { value: 'all', label: 'Toutes' },
-    { value: 'pending', label: 'A payer' },
+    { value: 'open', label: 'Non clôturées' },
+    { value: 'upcoming', label: 'À venir' },
     { value: 'ongoing', label: 'En cours' },
     { value: 'completed', label: 'Terminées' },
-    { value: 'cancelled', label: 'Annulées' }
+    { value: 'cancelled', label: 'Annulées' },
+    { value: 'all', label: 'Toutes' }
   ];
 
   const stats = [
     {
-      label: 'A payer',
-      value: reservations?.filter((reservation) => reservation?.status === 'pending')?.length,
-      icon: 'Clock',
-      color: 'text-warning bg-warning/10'
+      label: 'À venir',
+      value: reservations?.filter((reservation) => reservation?.status === 'upcoming')?.length,
+      icon: 'Calendar',
+      color: 'text-sky-700 bg-sky-100'
     },
     {
       label: 'En cours',
@@ -768,6 +1127,13 @@ const ReservationManagementDashboard = () => {
     }
   ];
 
+  const heroStats = stats?.map((stat, index) => ({
+    label: stat?.label,
+    value: stat?.value,
+    icon: stat?.icon,
+    tone: index === 0 ? 'warm' : index === 1 ? 'sky' : 'mint'
+  }));
+
   const handleViewContract = (reservation) => {
     setSelectedReservation(reservation);
     setShowContractModal(true);
@@ -781,12 +1147,22 @@ const ReservationManagementDashboard = () => {
   const closeChatModal = () => {
     setChatModalConversationId(null);
     setChatModalReservation(null);
+    setChatModalDraftMessage('');
     clearChatQueryParams();
+  };
+
+  const closeAdjustmentModal = () => {
+    if (adjustmentSubmitting) return;
+    setAdjustmentModalReservation(null);
   };
 
   const handleOpenInspection = (reservationId) => {
     if (!reservationId) return;
-    navigate(`/photos-d-tat-des-lieux/${encodeURIComponent(reservationId)}`);
+    navigate(
+      appendAdminVerificationParamsToPath(
+        `/photos-d-tat-des-lieux/${encodeURIComponent(reservationId)}`
+      )
+    );
   };
 
   const handleConfirmPickupStep = async (reservation, step) => {
@@ -830,7 +1206,7 @@ const ReservationManagementDashboard = () => {
     }
   };
 
-  const handleContactChat = async (reservation) => {
+  const openReservationChat = async (reservation, options = {}) => {
     const currentUserId = String(user?.id || '');
     const ownerId = String(reservation?.ownerId || '');
     const renterId = String(reservation?.renterId || '');
@@ -859,6 +1235,7 @@ const ReservationManagementDashboard = () => {
 
       setChatModalConversationId(data?.id);
       setChatModalReservation(reservation);
+      setChatModalDraftMessage(String(options?.draftMessage || '')?.trim());
     } catch (error) {
       console.error('Erreur ouverture chat reservation:', error);
       window.alert(error?.message || "Impossible d'ouvrir le chat pour le moment.");
@@ -867,62 +1244,197 @@ const ReservationManagementDashboard = () => {
     }
   };
 
+  const handleContactChat = async (reservation) => {
+    await openReservationChat(reservation);
+  };
+
+  const handleRebookLater = (reservation) => {
+    const annonceId = reservation?.annonceId;
+    if (!annonceId) {
+      toast?.error("Impossible d'ouvrir une nouvelle réservation pour cette annonce.");
+      return;
+    }
+
+    const suggestedDates = getSuggestedRebookingWindow(reservation);
+    navigate(`/demande-reservation/${encodeURIComponent(String(annonceId))}`, {
+      state: {
+        preselectedBookingDates: {
+          startDate: suggestedDates?.startDate?.toISOString?.() || null,
+          endDate: suggestedDates?.endDate?.toISOString?.() || null
+        },
+        rebookingFromReservationId: reservation?.id
+      }
+    });
+  };
+
+  const handleRequestReservationAdjustment = async (reservation) => {
+    if (String(reservation?.status || '')?.toLowerCase() !== 'upcoming') {
+      toast?.error("Seules les réservations à venir peuvent être annulées totalement ou partiellement.");
+      return;
+    }
+
+    setAdjustmentModalReservation(reservation);
+  };
+
+  const handleSubmitReservationAdjustment = async ({
+    reservation,
+    action,
+    reason,
+    newStartDate,
+    newEndDate
+  }) => {
+    if (!reservation?.id || !action) return;
+    if (String(reservation?.status || '')?.toLowerCase() !== 'upcoming') {
+      toast?.error("Seules les réservations à venir peuvent être annulées totalement ou partiellement.");
+      return;
+    }
+
+    try {
+      setAdjustmentSubmitting(true);
+
+      if (reservation?.viewerRole === 'owner') {
+        const successParams = new URLSearchParams();
+        successParams.set('ownerCancellationStatus', 'success');
+        successParams.set('ownerCancellationReservationId', String(reservation?.id));
+        successParams.set('ownerCancellationAction', String(action));
+
+        const cancelParams = new URLSearchParams();
+        cancelParams.set('ownerCancellationStatus', 'cancel');
+        cancelParams.set('ownerCancellationReservationId', String(reservation?.id));
+        cancelParams.set('ownerCancellationAction', String(action));
+
+        const successReturnBaseUrl = buildAppRedirectUrl(`/mes-reservations?${successParams.toString()}`);
+        const cancelReturnBaseUrl = buildAppRedirectUrl(`/mes-reservations?${cancelParams.toString()}`);
+
+        const { data, error } = await reservationService?.createOwnerReservationAdjustmentCheckout({
+          reservationId: reservation?.id,
+          action,
+          reason,
+          newStartDate,
+          newEndDate,
+          returnBaseUrl: successReturnBaseUrl,
+          cancelReturnBaseUrl
+        });
+
+        if (error) throw error;
+
+        if (data?.completed) {
+          const refundAmount = Math.max(0, Number(data?.refundAmount || 0) || 0);
+          const ownerCancellationFeeAmount = Math.max(0, Number(data?.ownerCancellationFeeAmount || data?.cancellationFeeAmount || 0) || 0);
+          toast?.success(
+            action === 'cancel_full'
+              ? `Réservation annulée. Locataire remboursé : ${refundAmount.toFixed(2)} EUR. Frais propriétaire : ${ownerCancellationFeeAmount.toFixed(2)} EUR.`
+              : `Annulation partielle enregistrée. Locataire remboursé : ${refundAmount.toFixed(2)} EUR. Frais propriétaire : ${ownerCancellationFeeAmount.toFixed(2)} EUR.`
+          );
+          setAdjustmentModalReservation(null);
+          await loadReservations();
+          return;
+        }
+
+        if (!data?.url) {
+          throw new Error("Session de paiement d'annulation créée sans URL de redirection.");
+        }
+
+        setAdjustmentModalReservation(null);
+        await redirectToExternalUrl(data.url);
+        return;
+      }
+
+      const { data, error } = await reservationService?.adjustRenterReservation({
+        reservationId: reservation?.id,
+        action,
+        reason,
+        newStartDate,
+        newEndDate
+      });
+
+      if (error) throw error;
+
+      const refundAmount = Math.max(0, Number(data?.refundAmount || 0) || 0);
+      const cancellationFeeAmount = Math.max(0, Number(data?.cancellationFeeAmount || 0) || 0);
+      const adjustedRentalAmount = Math.max(0, Number(data?.adjustedRentalAmount || 0) || 0);
+
+      if (action === 'cancel_full') {
+        toast?.success(
+          refundAmount > 0
+            ? `Réservation annulée. Remboursement estimé : ${refundAmount.toFixed(2)} EUR.`
+            : 'Réservation annulée.'
+        );
+      } else if (reservation?.isPaid) {
+        toast?.success(
+          `Annulation partielle enregistrée. Remboursement estimé : ${refundAmount.toFixed(2)} EUR. Frais d'annulation conservés : ${cancellationFeeAmount.toFixed(2)} EUR.`
+        );
+      } else {
+        toast?.success(`Annulation partielle enregistrée. Nouveau montant location: ${adjustedRentalAmount.toFixed(2)} EUR.`);
+      }
+
+      setAdjustmentModalReservation(null);
+      await loadReservations();
+    } catch (error) {
+      console.error('Erreur ajustement reservation:', error);
+      toast?.error(error?.message || "Impossible d'ajuster cette reservation pour le moment.");
+    } finally {
+      setAdjustmentSubmitting(false);
+    }
+  };
+
   return (
-    <div className="min-h-screen flex flex-col bg-background">
-      <Header />
-      <main className="flex-1 container mx-auto px-4 py-8">
-        <div className="flex items-center gap-2 text-sm text-muted-foreground mb-6">
-          <a href="/tableau-bord-utilisateur" className="hover:text-[#17a2b8] transition-colors">Tableau de bord</a>
-          <Icon name="ChevronRight" size={14} />
-          <span className="text-foreground">Mes réservations</span>
-        </div>
+    <ActionPageShell
+      maxWidth="max-w-7xl"
+      hero={(
+        <ActionHero
+          eyebrow="Mes réservations"
+          title="Mes reservations"
+          subtitle="Ouvrez la reservation qui demande une action."
+          stats={heroStats}
+          tone="sky"
+        />
+      )}
+    >
+      <div className="space-y-6">
 
-        <div className="mb-6">
-          <h1 className="text-2xl md:text-3xl font-bold text-foreground mb-2">Gestion des réservations</h1>
-          <p className="text-muted-foreground">Gérez vos réservations et suivez leur statut en temps réel</p>
-        </div>
-
-        {loadError && (
-          <div className="bg-warning/10 border border-warning/20 rounded-lg p-4 mb-6 text-sm text-foreground">
-            {loadError}
-          </div>
-        )}
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          {stats?.map((stat) => (
-            <div key={stat?.label} className="bg-white rounded-lg shadow-elevation-1 p-4 md:p-6">
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <p className="text-sm text-muted-foreground mb-1">{stat?.label}</p>
-                  <p className="text-3xl font-bold text-foreground">{stat?.value}</p>
-                </div>
-                <div className={`p-3 rounded-lg ${stat?.color}`}>
-                  <Icon name={stat?.icon} size={24} />
-                </div>
+        {(isVerificationReservationScenario || isVerificationPickupScenario) ? (
+          <ActionCard className="border border-green-200 bg-green-50 p-4" data-testid="reservation-verification-banner">
+            <div className="flex items-start gap-3">
+              <Icon name="ShieldCheck" size={20} className="mt-0.5 text-success" />
+              <div>
+                <p className="font-medium text-foreground">Mode de vérification admin</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {isVerificationPickupScenario
+                    ? 'Une réservation de jour J est injectée pour valider checklist, remise et démarrage.'
+                    : 'Un portefeuille de réservations est injecté pour valider filtres, timeline, contrat, chat et ajustements.'}
+                </p>
               </div>
             </div>
-          ))}
-        </div>
+          </ActionCard>
+        ) : null}
 
-        <div className="bg-white rounded-lg shadow-elevation-1 p-4 mb-6">
+        {loadError && (
+          <ActionCard className="border border-warning/20 bg-warning/10 p-4 text-sm text-foreground">
+            {loadError}
+          </ActionCard>
+        )}
+
+        <ActionCard className="p-4">
           <Select
             options={statusOptions}
             value={statusFilter}
             onChange={setStatusFilter}
             placeholder="Filtrer par statut" />
-        </div>
+        </ActionCard>
 
         <div className="space-y-4">
           {loading ? (
-            <div className="bg-white rounded-lg shadow-elevation-1 p-12 text-center">
+            <ActionCard className="p-12 text-center">
               <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary mx-auto mb-3"></div>
               <p className="text-muted-foreground">Chargement des réservations...</p>
-            </div>
+            </ActionCard>
           ) : filteredReservations?.length === 0 ? (
-            <div className="bg-white rounded-lg shadow-elevation-1 p-12 text-center">
-              <Icon name="Calendar" size={48} className="mx-auto text-muted-foreground mb-3" />
-              <p className="text-muted-foreground">Aucune réservation trouvée</p>
-            </div>
+            <ActionEmptyState
+              icon="CalendarX2"
+              title="Aucune réservation à afficher"
+              description="Changez le filtre ou revenez plus tard pour voir les réservations actives."
+            />
           ) : (
             filteredReservations?.map((reservation) => {
               const currentUserId = String(user?.id || '');
@@ -937,6 +1449,8 @@ const ReservationManagementDashboard = () => {
                   onOpenInspection={handleOpenInspection}
                   onConfirmPickupStep={handleConfirmPickupStep}
                   onContactChat={handleContactChat}
+                  onRebookLater={handleRebookLater}
+                  onRequestReservationAdjustment={handleRequestReservationAdjustment}
                   contactCtaLabel={contactCtaLabel}
                   pickupStepLoading={(
                     String(pickupStepInFlight?.reservationId || '') === String(reservation?.id || '')
@@ -958,14 +1472,21 @@ const ReservationManagementDashboard = () => {
           isOpen={Boolean(chatModalConversationId)}
           conversationId={chatModalConversationId}
           reservation={chatModalReservation}
+          initialDraftMessage={chatModalDraftMessage}
           currentUserId={user?.id}
           onClose={closeChatModal}
           onOpenFullChat={(conversationId) => navigate(
-            `/tableau-bord-utilisateur?tab=messages&conversation=${encodeURIComponent(conversationId)}`
+            `/messages?conversation=${encodeURIComponent(conversationId)}`
           )} />
-      </main>
-      <Footer />
-    </div>
+
+        <ReservationAdjustmentModal
+          isOpen={Boolean(adjustmentModalReservation)}
+          reservation={adjustmentModalReservation}
+          loading={adjustmentSubmitting}
+          onClose={closeAdjustmentModal}
+          onSubmit={handleSubmitReservationAdjustment} />
+      </div>
+    </ActionPageShell>
   );
 };
 

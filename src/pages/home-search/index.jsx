@@ -74,6 +74,42 @@ const HOME_FAQ_ITEMS = [
       'Vous pouvez créer une annonce depuis votre espace en quelques étapes, ajouter des photos, définir votre prix journalier et préciser votre ville pour apparaître dans la recherche locale.'
   }
 ];
+const HOME_FLOW_ITEMS = [
+  {
+    icon: 'Search',
+    title: 'Je trouve',
+    description: 'Je cherche une offre ou je publie une demande.'
+  },
+  {
+    icon: 'CalendarDays',
+    title: 'Je bloque mes dates',
+    description: 'Je réserve sur un calendrier lisible.'
+  },
+  {
+    icon: 'Sparkles',
+    title: 'Je repars équipé',
+    description: 'Le matériel circule, pas les longs formulaires.'
+  }
+];
+const HOME_PLATFORM_HIGHLIGHTS = [
+  'Offres locales',
+  'Paiement sécurisé',
+  'Demandes publiques'
+];
+const HOME_QUICK_LINKS = [
+  {
+    to: '/creer-annonce',
+    icon: 'Plus',
+    label: 'Publier une annonce',
+    description: 'Mettre un objet en location.'
+  },
+  {
+    to: '/creer-demande',
+    icon: 'MessageSquare',
+    label: 'Publier une demande',
+    description: 'Dire ce que vous cherchez.'
+  }
+];
 const EquipmentGrid = React.lazy(() => import('./components/EquipmentGrid'));
 
 const getHomeOffersRenderBatchSize = () => {
@@ -94,15 +130,8 @@ const computeHomeAverageRating = (items = []) => {
   return ratings?.reduce((sum, value) => sum + value, 0) / ratings?.length;
 };
 
-const isSchemaColumnError = (error) => {
-  if (!error) return false;
-  const code = String(error?.code || '');
-  if (code === '42703' || code === 'PGRST204') return true;
-  const message = String(error?.message || '')?.toLowerCase();
-  return message?.includes('column') && message?.includes('does not exist');
-};
-
 const HOME_MIXED_FEED_LIMIT = 8;
+const HERO_LOCAL_ACTIVITY_MIN_ACTIVE_USERS = 50;
 
 const CATEGORY_ICON_MAP = {
   Bricolage: 'Wrench',
@@ -691,24 +720,7 @@ const HomeSearch = () => {
         error: usersError
       } = await supabase
         ?.from('profiles')
-        ?.select('*', { count: 'exact', head: true })
-        ?.is('deleted_at', null));
-
-      if (usersError && isSchemaColumnError(usersError)) {
-        ({ count: usersCount, error: usersError } = await supabase
-          ?.from('profiles')
-          ?.select('*', { count: 'exact', head: true }));
-      } else if (usersError) {
-        // Some environments return an opaque error when filtering on a missing column.
-        const retryProfiles = await supabase
-          ?.from('profiles')
-          ?.select('*', { count: 'exact', head: true });
-
-        if (!retryProfiles?.error) {
-          usersCount = retryProfiles?.count || 0;
-          usersError = null;
-        }
-      }
+        ?.select('*', { count: 'exact', head: true }));
 
       let activeUsers = 0;
       if (usersError) {
@@ -719,14 +731,7 @@ const HomeSearch = () => {
           error: altUsersError
         } = await supabase
           ?.from('user_profiles')
-          ?.select('*', { count: 'exact', head: true })
-          ?.is('deleted_at', null));
-
-        if (altUsersError && isSchemaColumnError(altUsersError)) {
-          ({ count: altUsersCount, error: altUsersError } = await supabase
-            ?.from('user_profiles')
-            ?.select('*', { count: 'exact', head: true }));
-        }
+          ?.select('*', { count: 'exact', head: true }));
 
         activeUsers = altUsersCount || 0;
       } else {
@@ -781,7 +786,7 @@ const HomeSearch = () => {
       trackAnalyticsEvent('geolocation_search_error', {
         error_message: String(error?.message || 'geolocation_error')?.slice(0, 120)
       });
-      alert(error?.message || 'Erreur de geolocalisation. Verifiez les autorisations de votre navigateur.');
+      alert(error?.message || 'Erreur de géolocalisation. Vérifiez les autorisations de votre navigateur.');
       setGeolocating(false);
     }
   };
@@ -810,6 +815,7 @@ const HomeSearch = () => {
     Number(statistics?.activeUsers ?? 0),
     Number(distinctListingOwnersCount || 0)
   );
+  const shouldShowHeroLocalActivity = activeUsersCount >= HERO_LOCAL_ACTIVITY_MIN_ACTIVE_USERS;
   const successfulRentalsCount = statistics?.successfulRentals ?? 0;
   const averageRatingValue = statistics?.averageRating ?? 0;
   const isPublicListingsUnavailable = Boolean(annoncesLoadError) && (annonces?.length || 0) === 0;
@@ -883,11 +889,11 @@ const HomeSearch = () => {
   const hasVisitorLocationForFeed = Boolean(userLocation) && hasNearbySortedItems;
   const isHomeFeedLocationPending = homeFeedLocationMode === 'pending';
   const homeFeedTitle = hasVisitorLocationForFeed
-    ? 'Dernieres annonces pres de vous'
+    ? 'Dernières annonces près de vous'
     : 'Dernières annonces publiées';
   const homeFeedSubtitle = hasVisitorLocationForFeed
-    ? 'Offres et demandes confondues, avec priorite ? la proximite quand elle est disponible.'
-    : "Offres et demandes confondues, triees par date de creation (si la localisation n'est pas partagee).";
+    ? 'Offres et demandes confondues, avec priorité à la proximité quand elle est disponible.'
+    : "Offres et demandes confondues, triées par date de création (si la localisation n'est pas partagée).";
 
   const totalSearchResults =
     activeTab === 'tout'
@@ -974,17 +980,33 @@ const HomeSearch = () => {
           <div className="pointer-events-none absolute bottom-0 left-1/3 h-40 w-40 rounded-full bg-[#67e8f9]/20 blur-2xl" />
 
           <div className="container relative mx-auto px-4">
-            <div className="mb-8 grid gap-8 lg:grid-cols-[1.2fr_0.8fr] lg:items-center">
+            <div
+              className={`mb-8 grid gap-8 ${
+                shouldShowHeroLocalActivity ? 'lg:grid-cols-[1.2fr_0.8fr] lg:items-center' : 'lg:grid-cols-1'
+              }`}
+            >
               <div>
                 <span className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-[#7dd3fc]">
                   <Icon name="Sparkles" size={14} />
                   Plateforme locale de location
                 </span>
 
-                <h1 className="mt-4 max-w-2xl text-balance text-4xl font-bold leading-tight text-white md:text-5xl">
-                  Louez et partagez vos equipements entre voisins, en quelques clics.
+                <h1
+                  className={`mt-4 text-4xl font-bold leading-tight text-white md:text-5xl ${
+                    shouldShowHeroLocalActivity
+                      ? 'max-w-2xl text-balance'
+                      : 'max-w-[88rem] text-balance xl:max-w-[92rem] xl:text-[3.75rem] xl:leading-[1.05] 2xl:max-w-none 2xl:whitespace-nowrap 2xl:text-[3.2rem] 2xl:tracking-[-0.03em]'
+                  }`}
+                >
+                  Louez et partagez vos équipements entre voisins, en quelques clics.
                 </h1>
-                <p className="mt-5 max-w-2xl text-base text-slate-200 md:text-lg">
+                <p
+                  className={`mt-5 text-base text-slate-200 md:text-lg ${
+                    shouldShowHeroLocalActivity
+                      ? 'max-w-2xl'
+                      : 'max-w-[90rem] xl:max-w-[96rem] xl:text-[1.65rem] xl:leading-[1.28] 2xl:max-w-none 2xl:whitespace-nowrap'
+                  }`}
+                >
                   Trouvez rapidement le bon matériel près de chez vous, au bon prix, avec une expérience claire
                   et rassurante.
                 </p>
@@ -1008,49 +1030,51 @@ const HomeSearch = () => {
                   </span>
                 </div>
                 <p className="mt-2 text-xs text-slate-300">
-                  Remboursement minimum garanti en cas de vol ou deterioration (selon conditions).
+                  Remboursement minimum garanti en cas de vol ou détérioration (selon conditions).
                 </p>
 
               </div>
 
-              <div className="rounded-3xl border border-white/20 bg-white/10 p-5 shadow-[0_18px_50px_-30px_rgba(15,23,42,0.9)] backdrop-blur md:p-6">
-                <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[#bae6fd]">Activite locale</p>
-                <div className="mt-4 space-y-3">
-                  {heroMetrics?.map((metric) => (
-                    <div
-                      key={metric?.label}
-                      className="flex items-center justify-between rounded-xl border border-white/15 bg-white/10 px-3 py-2"
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-white/15 text-[#67e8f9]">
-                          <Icon name={metric?.icon} size={16} />
-                        </span>
-                        <span className="text-sm text-slate-200">{metric?.label}</span>
+              {shouldShowHeroLocalActivity && (
+                <div className="rounded-3xl border border-white/20 bg-white/10 p-5 shadow-[0_18px_50px_-30px_rgba(15,23,42,0.9)] backdrop-blur md:p-6">
+                  <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[#bae6fd]">Activité locale</p>
+                  <div className="mt-4 space-y-3">
+                    {heroMetrics?.map((metric) => (
+                      <div
+                        key={metric?.label}
+                        className="flex items-center justify-between rounded-xl border border-white/15 bg-white/10 px-3 py-2"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-white/15 text-[#67e8f9]">
+                            <Icon name={metric?.icon} size={16} />
+                          </span>
+                          <span className="text-sm text-slate-200">{metric?.label}</span>
+                        </div>
+                        <span className="font-heading text-lg font-semibold text-white">{metric?.value}</span>
                       </div>
-                      <span className="font-heading text-lg font-semibold text-white">{metric?.value}</span>
+                    ))}
+                  </div>
+
+                  <div className="mt-5 rounded-2xl border border-white/20 bg-gradient-to-r from-[#0f172a]/45 to-[#1d4ed8]/30 p-4">
+                    <p className="text-xs uppercase tracking-[0.1em] text-slate-300">Satisfaction moyenne</p>
+                    <div className="mt-2 flex items-center justify-between">
+                      <p className="text-2xl font-bold text-white">
+                        {isPublicStatsUnavailable ? '—' : `${formatRating(averageRatingValue)}/5`}
+                      </p>
+                      <span className="inline-flex items-center gap-1 rounded-full bg-white/15 px-3 py-1 text-xs font-medium text-[#fde68a]">
+                        <Icon name="Star" size={14} className="fill-[#fde68a] text-[#fde68a]" />
+                        Communauté vérifiée
+                      </span>
                     </div>
-                  ))}
-                </div>
-
-                <div className="mt-5 rounded-2xl border border-white/20 bg-gradient-to-r from-[#0f172a]/45 to-[#1d4ed8]/30 p-4">
-                  <p className="text-xs uppercase tracking-[0.1em] text-slate-300">Satisfaction moyenne</p>
-                  <div className="mt-2 flex items-center justify-between">
-                    <p className="text-2xl font-bold text-white">
-                      {isPublicStatsUnavailable ? '—' : `${formatRating(averageRatingValue)}/5`}
-                    </p>
-                    <span className="inline-flex items-center gap-1 rounded-full bg-white/15 px-3 py-1 text-xs font-medium text-[#fde68a]">
-                      <Icon name="Star" size={14} className="fill-[#fde68a] text-[#fde68a]" />
-                      Communauté vérifiée
-                    </span>
                   </div>
-                </div>
 
-                {(annoncesLoadError || statisticsLoadError) && (
-                  <div className="mt-4 rounded-2xl border border-amber-200/60 bg-amber-50/90 p-4 text-sm text-amber-900">
-                    {annoncesLoadError || statisticsLoadError}
-                  </div>
-                )}
-              </div>
+                  {(annoncesLoadError || statisticsLoadError) && (
+                    <div className="mt-4 rounded-2xl border border-amber-200/60 bg-amber-50/90 p-4 text-sm text-amber-900">
+                      {annoncesLoadError || statisticsLoadError}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             <SearchBar
@@ -1087,10 +1111,10 @@ const HomeSearch = () => {
                 <div className="mb-6 flex items-center justify-between gap-4">
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[#0f7081]">Confiance</p>
-                    <h2 className="mt-2 text-2xl font-bold text-slate-900 md:text-3xl">Une communaute qui grandit chaque jour</h2>
+                    <h2 className="mt-2 text-2xl font-bold text-slate-900 md:text-3xl">Une communauté qui grandit chaque jour</h2>
                   </div>
                   <span className="hidden rounded-full border border-[#17a2b8]/30 bg-white px-3 py-1 text-xs font-medium text-[#0f7081] md:inline-flex">
-                    Donnees en temps reel
+                    Données en temps réel
                   </span>
                 </div>
 
@@ -1115,18 +1139,18 @@ const HomeSearch = () => {
             <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
               <div>
                 <span className="inline-flex rounded-full border border-[#17a2b8]/25 bg-[#ecfeff] px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[#0f7081]">
-                  {hasVisitorLocationForFeed ? 'Pres de vous' : 'Dernieres publications'}
+                  {hasVisitorLocationForFeed ? 'Près de vous' : 'Dernières publications'}
                 </span>
                 <h2 className="mt-3 text-3xl font-bold text-slate-900">{homeFeedTitle}</h2>
                 <p className="mt-2 max-w-3xl text-slate-600">{homeFeedSubtitle}</p>
                 {isHomeFeedLocationPending && (
                   <p className="mt-2 text-sm text-slate-500">
-                    Detection de votre localisation en cours pour prioriser les offres proches...
+                    Détection de votre localisation en cours pour prioriser les offres proches...
                   </p>
                 )}
                 {hasVisitorLocationForFeed && (
                   <p className="mt-2 text-sm text-slate-500">
-                    Les demandes sont triees par date (la table demandes ne stocke pas encore de coordonnees GPS).
+                    Les demandes les plus récentes apparaissent en priorité.
                   </p>
                 )}
               </div>
@@ -1226,8 +1250,18 @@ const HomeSearch = () => {
                   return (
                     <article
                       key={feedItem?.id}
-                      className="rounded-2xl border border-slate-200 bg-white p-4 shadow-elevation-1"
+                      className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-elevation-1"
                     >
+                      {demande?.library_image?.public_url ? (
+                        <div className="aspect-[4/3] bg-slate-100">
+                          <img
+                            src={demande?.library_image?.public_url}
+                            alt={demande?.library_image?.alt_text || demande?.library_image?.title || demande?.titre || 'Illustration de demande'}
+                            className="h-full w-full object-cover"
+                          />
+                        </div>
+                      ) : null}
+                      <div className="p-4">
                       <div className="flex items-start justify-between gap-3">
                         <span className="inline-flex items-center gap-1 rounded-full bg-[#0f7081] px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white">
                           <Icon name="MessageSquare" size={12} />
@@ -1254,10 +1288,13 @@ const HomeSearch = () => {
                             <Icon name="Clock3" size={14} />
                             {formatFeedDate(feedItem?.createdAt)}
                           </span>
-                          <span className="font-semibold text-slate-900">
-                            {demande?.prix_max ? `Max ${demande?.prix_max} EUR/j` : 'Budget non précisé'}
-                          </span>
+                          {demande?.prix_max ? (
+                            <span className="font-semibold text-slate-900">
+                              {`Max ${demande?.prix_max} EUR/j`}
+                            </span>
+                          ) : null}
                         </div>
+                      </div>
                       </div>
                     </article>
                   );
@@ -1346,7 +1383,17 @@ const HomeSearch = () => {
                   ) : (
                     <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
                       {displayedDemandes?.map((demande) => (
-                        <article key={demande?.id} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-elevation-1">
+                        <article key={demande?.id} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-elevation-1">
+                          {demande?.library_image?.public_url ? (
+                            <div className="aspect-[4/3] bg-slate-100">
+                              <img
+                                src={demande?.library_image?.public_url}
+                                alt={demande?.library_image?.alt_text || demande?.library_image?.title || demande?.titre || 'Illustration de demande'}
+                                className="h-full w-full object-cover"
+                              />
+                            </div>
+                          ) : null}
+                          <div className="p-5">
                           <span className="inline-flex items-center rounded-full bg-[#0f7081] px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white">
                             Demande
                           </span>
@@ -1363,6 +1410,7 @@ const HomeSearch = () => {
                             </span>
                             {demande?.prix_max ? <span>Max {demande?.prix_max}€/j</span> : null}
                           </div>
+                          </div>
                         </article>
                       ))}
                     </div>
@@ -1377,85 +1425,60 @@ const HomeSearch = () => {
           <div className="pointer-events-none absolute -left-8 top-6 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
           <div className="pointer-events-none absolute right-8 bottom-2 h-48 w-48 rounded-full bg-[#22d3ee]/25 blur-3xl" />
 
-          <div className="container relative mx-auto px-4 text-center">
-            <h2 className="text-balance text-3xl font-bold text-white md:text-4xl">
-              Gagnez de l'argent en louant vos objets inutilisés
-            </h2>
-            <p className="mx-auto mt-4 max-w-2xl text-base text-white/90 md:text-lg">
-              Vos équipements dorment dans votre garage ? Transformez-les en revenu complémentaire et rendez service
-              à votre quartier.
-            </p>
-            <div className="mt-8 flex flex-col justify-center gap-4 sm:flex-row">
-              <Button
-                size="lg"
-                className="border-0 bg-white text-[#0f4d7a] hover:bg-slate-100"
-                iconName="Plus"
-                onClick={() => (window.location.href = '/creer-annonce')}
-              >
-                Créer une annonce
-              </Button>
-              <Button
-                size="lg"
-                variant="outline"
-                className="border-white/45 bg-transparent text-white hover:bg-white/10"
-                iconName="ArrowRight"
-                iconPosition="right"
-                onClick={() => (window.location.href = '/creer-demande')}
-              >
-                Créer une demande
-              </Button>
-            </div>
-          </div>
-        </section>
-
-        <section className="bg-[#f1f7ff] py-14 md:py-16">
-          <div className="container mx-auto px-4">
-            <div className="mb-10 text-center">
-              <span className="inline-flex rounded-full border border-[#17a2b8]/25 bg-[#ecfeff] px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[#0f7081]">
-                Simple et rapide
-              </span>
-              <h2 className="mt-3 text-3xl font-bold text-slate-900">Comment ça marche ?</h2>
-              <p className="mt-2 text-slate-600">Louez en 3 étapes claires.</p>
-            </div>
-
-            <div className="mx-auto grid max-w-5xl grid-cols-1 gap-5 md:grid-cols-3">
-              <div className="rounded-2xl border border-slate-200 bg-gradient-to-b from-[#f8fbff] to-[#eef6ff] p-6 text-center shadow-elevation-1">
-                <span className="mx-auto inline-flex h-14 w-14 items-center justify-center rounded-xl bg-[#ecfeff] text-[#0f7081]">
-                  <Icon name="Search" size={28} />
+          <div className="container relative mx-auto px-4">
+            <div className="grid gap-8 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
+              <div className="text-center lg:text-left">
+                <span className="inline-flex rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white/85">
+                  Publier ou demander
                 </span>
-                <span className="mx-auto mt-4 inline-flex h-7 min-w-7 items-center justify-center rounded-full bg-[#17a2b8] px-2 text-xs font-bold text-white">
-                  1
-                </span>
-                <h3 className="mt-3 text-xl font-semibold text-slate-900">Rechercher</h3>
-                <p className="mt-2 text-sm text-slate-600">
-                  Trouvez l'équipement adapté à votre besoin en filtrant par catégorie ou localisation.
+                <h2 className="mt-4 text-balance text-3xl font-bold text-white md:text-4xl">
+                  Faites circuler le matériel du quartier
+                </h2>
+                <p className="mt-4 max-w-2xl text-base text-white/90 md:text-lg">
+                  Une annonce si vous avez l'objet. Une demande si vous le cherchez. Le parcours reste le même : simple, local et lisible.
                 </p>
+                <div className="mt-8 flex flex-col justify-center gap-4 sm:flex-row lg:justify-start">
+                  <Button
+                    size="lg"
+                    className="border-0 bg-white text-[#0f4d7a] hover:bg-slate-100"
+                    iconName="Plus"
+                    onClick={() => (window.location.href = '/creer-annonce')}
+                  >
+                    Créer une annonce
+                  </Button>
+                  <Button
+                    size="lg"
+                    variant="outline"
+                    className="border-white/45 bg-transparent text-white hover:bg-white/10"
+                    iconName="ArrowRight"
+                    iconPosition="right"
+                    onClick={() => (window.location.href = '/creer-demande')}
+                  >
+                    Créer une demande
+                  </Button>
+                </div>
               </div>
 
-              <div className="rounded-2xl border border-slate-200 bg-gradient-to-b from-[#f8fbff] to-[#eef6ff] p-6 text-center shadow-elevation-1">
-                <span className="mx-auto inline-flex h-14 w-14 items-center justify-center rounded-xl bg-[#ecfeff] text-[#0f7081]">
-                  <Icon name="CalendarDays" size={28} />
-                </span>
-                <span className="mx-auto mt-4 inline-flex h-7 min-w-7 items-center justify-center rounded-full bg-[#17a2b8] px-2 text-xs font-bold text-white">
-                  2
-                </span>
-                <h3 className="mt-3 text-xl font-semibold text-slate-900">Réserver</h3>
-                <p className="mt-2 text-sm text-slate-600">
-                  Choisissez vos dates et confirmez la réservation instantanément par paiement sécurisé.
-                </p>
-              </div>
-
-              <div className="rounded-2xl border border-slate-200 bg-gradient-to-b from-[#f8fbff] to-[#eef6ff] p-6 text-center shadow-elevation-1">
-                <span className="mx-auto inline-flex h-14 w-14 items-center justify-center rounded-xl bg-[#ecfeff] text-[#0f7081]">
-                  <Icon name="ThumbsUp" size={28} />
-                </span>
-                <span className="mx-auto mt-4 inline-flex h-7 min-w-7 items-center justify-center rounded-full bg-[#17a2b8] px-2 text-xs font-bold text-white">
-                  3
-                </span>
-                <h3 className="mt-3 text-xl font-semibold text-slate-900">Profiter</h3>
-                <p className="mt-2 text-sm text-slate-600">
-                  Récupérez le matériel, utilisez-le sereinement, puis notez votre expérience.
-                </p>
+              <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
+                {HOME_FLOW_ITEMS?.map((item, index) => (
+                  <div
+                    key={item?.title}
+                    className="rounded-2xl border border-white/15 bg-white/10 p-4 text-white shadow-elevation-1 backdrop-blur"
+                  >
+                    <div className="flex items-start gap-3">
+                      <span className="inline-flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-white/15 text-white">
+                        <Icon name={item?.icon} size={20} />
+                      </span>
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-white/70">
+                          Étape {index + 1}
+                        </p>
+                        <h3 className="mt-1 text-lg font-semibold">{item?.title}</h3>
+                        <p className="mt-1 text-sm text-white/80">{item?.description}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
@@ -1466,17 +1489,22 @@ const HomeSearch = () => {
             <div className="grid gap-8 lg:grid-cols-[1.15fr_0.85fr]">
               <div>
                 <span className="inline-flex rounded-full border border-[#17a2b8]/20 bg-[#ecfeff] px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[#0f7081]">
-                  SEO utile pour les visiteurs
+                  Questions utiles
                 </span>
-                <h2 className="mt-3 text-3xl font-bold text-slate-900">Questions fréquentes sur la location de matériel entre voisins</h2>
-                <p className="mt-3 max-w-3xl text-slate-600">
-                  Le Matos Du Voisin facilite la location de matériel entre particuliers partout en France.
-                  Vous pouvez publier une annonce, rechercher un équipement près de chez vous et envoyer une
-                  réservation en quelques clics.
-                </p>
+                <h2 className="mt-3 text-3xl font-bold text-slate-900">L'essentiel avant de louer</h2>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {HOME_PLATFORM_HIGHLIGHTS?.map((highlight) => (
+                    <span
+                      key={highlight}
+                      className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600"
+                    >
+                      {highlight}
+                    </span>
+                  ))}
+                </div>
 
                 <div className="mt-6 space-y-3">
-                  {HOME_FAQ_ITEMS.map((faq, index) => (
+                  {HOME_FAQ_ITEMS.map((faq) => (
                     <details
                       key={faq?.question}
                       className="group rounded-2xl border border-slate-200 bg-[#f8fbff] p-4 open:border-[#17a2b8]/35 open:bg-white"
@@ -1494,12 +1522,29 @@ const HomeSearch = () => {
               </div>
 
               <aside className="rounded-3xl border border-slate-200 bg-gradient-to-b from-[#f8fbff] to-white p-6 shadow-elevation-1">
-                <h3 className="text-xl font-semibold text-slate-900">Explorer la plateforme</h3>
-                <p className="mt-2 text-sm text-slate-600">
-                  Accédez rapidement aux catégories disponibles et aux parcours les plus utiles.
-                </p>
+                <h3 className="text-xl font-semibold text-slate-900">Aller plus vite</h3>
+                <div className="mt-5 grid gap-3">
+                  {HOME_QUICK_LINKS?.map((quickLink) => (
+                    <Link
+                      key={quickLink?.to}
+                      to={quickLink?.to}
+                      className="rounded-2xl border border-slate-200 bg-white p-4 transition hover:border-[#17a2b8]/45 hover:text-[#0f7081]"
+                    >
+                      <div className="flex items-start gap-3">
+                        <span className="inline-flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-[#ecfeff] text-[#0f7081]">
+                          <Icon name={quickLink?.icon} size={18} />
+                        </span>
+                        <div className="flex-1">
+                          <p className="font-semibold text-slate-900">{quickLink?.label}</p>
+                          <p className="mt-1 text-sm text-slate-600">{quickLink?.description}</p>
+                        </div>
+                        <Icon name="ArrowRight" size={16} className="mt-1 text-slate-400" />
+                      </div>
+                    </Link>
+                  ))}
+                </div>
 
-                <div className="mt-5">
+                <div className="mt-6">
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Catégories</p>
                   <div className="mt-2 flex flex-wrap gap-2">
                     {categoryShortcutList?.map((categoryOption) => (
@@ -1514,29 +1559,10 @@ const HomeSearch = () => {
                   </div>
                 </div>
 
-                <div className="mt-5 space-y-2">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Actions rapides</p>
-                  <Link
-                    to="/creer-annonce"
-                    className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-800 hover:border-[#17a2b8]/45 hover:text-[#0f7081]"
-                  >
-                    Publier une annonce de location
-                    <Icon name="ArrowRight" size={16} />
-                  </Link>
-                  <Link
-                    to="/creer-demande"
-                    className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-800 hover:border-[#17a2b8]/45 hover:text-[#0f7081]"
-                  >
-                    Publier une demande de matériel
-                    <Icon name="ArrowRight" size={16} />
-                  </Link>
-                </div>
-
-                <div className="mt-5 rounded-2xl border border-[#17a2b8]/20 bg-[#ecfeff] p-4">
-                  <p className="text-sm font-semibold text-slate-900">Recherche locale en France</p>
-                  <p className="mt-1 text-sm text-slate-600">
-                    La plateforme met en avant des annonces par ville et categorie pour vous aider a trouver
-                    rapidement du matériel disponible près de chez vous.
+                <div className="mt-6 rounded-2xl border border-[#17a2b8]/20 bg-[#ecfeff] p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-[#0f7081]">Bon à savoir</p>
+                  <p className="mt-2 text-sm text-slate-700">
+                    Une ville + une catégorie suffisent souvent pour tomber vite sur les bonnes offres.
                   </p>
                 </div>
               </aside>
@@ -1551,6 +1577,7 @@ const HomeSearch = () => {
 };
 
 export default HomeSearch;
+
 
 
 

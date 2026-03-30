@@ -12,14 +12,14 @@ const STATUS_FILTER_OPTIONS = [
   { value: 'all', label: 'Tous les statuts' },
   { value: 'delivered', label: 'Delivres' },
   { value: 'pending', label: 'En attente' },
-  { value: 'failed', label: 'Echecs' },
+  { value: 'failed', label: 'Échecs' },
   { value: 'opened', label: 'Ouverts' }
 ];
 
 const STATUS_BADGES = {
   delivered: { label: 'Delivre', color: 'bg-success/10 text-success' },
   pending: { label: 'En attente', color: 'bg-warning/10 text-warning' },
-  failed: { label: 'Echec', color: 'bg-error/10 text-error' },
+  failed: { label: 'Échec', color: 'bg-error/10 text-error' },
   opened: { label: 'Ouvert', color: 'bg-blue-100 text-blue-700' }
 };
 
@@ -144,8 +144,8 @@ const AdminEmailTracking = () => {
       `Destinataire: ${email?.recipient_email || '-'}`,
       `Template: ${email?.template_key || '-'}`,
       `Statut: ${normalizeStatus(email?.status)}`,
-      `Cree le: ${formatDate(email?.created_at)}`,
-      `Envoye le: ${formatDate(email?.sent_at)}`,
+      `Créé le: ${formatDate(email?.created_at)}`,
+      `Envoyé le: ${formatDate(email?.sent_at)}`,
         `Tentatives: ${email?.attempts ?? 0}`,
       `Erreur: ${email?.last_error || email?.error_message || '-'}`
     ]?.join('\n');
@@ -166,7 +166,7 @@ const AdminEmailTracking = () => {
 
         <div className="mb-6">
           <h1 className="text-2xl md:text-3xl font-bold text-foreground mb-2">Suivi des e-mails</h1>
-          <p className="text-muted-foreground">Gerez et suivez tous les e-mails envoyes par la plateforme</p>
+          <p className="text-muted-foreground">Gérez et suivez tous les e-mails envoyés par la plateforme</p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
@@ -177,7 +177,7 @@ const AdminEmailTracking = () => {
               </div>
               <div>
                 <p className="text-2xl font-bold text-foreground">{stats?.total}</p>
-                <p className="text-xs text-muted-foreground">Total envoyes</p>
+                <p className="text-xs text-muted-foreground">Total envoyés</p>
               </div>
             </div>
           </div>
@@ -213,7 +213,7 @@ const AdminEmailTracking = () => {
               </div>
               <div>
                 <p className="text-2xl font-bold text-foreground">{stats?.failed}</p>
-                <p className="text-xs text-muted-foreground">Echecs</p>
+                <p className="text-xs text-muted-foreground">Échecs</p>
               </div>
             </div>
           </div>
@@ -263,7 +263,7 @@ const AdminEmailTracking = () => {
                     Statut
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                    Envoye le
+                    Envoyé le
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Actions

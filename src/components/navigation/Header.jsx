@@ -7,8 +7,14 @@ import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import notificationService from '../../services/notificationService';
 import reservationService from '../../services/reservationService';
+import { CURRENT_RESERVATION_STATUSES } from '../../utils/reservationStatus';
+import {
+  isTestModeInstructionsAvailable,
+  requestOpenTestModeInstructions,
+  TEST_MODE_INSTRUCTIONS_CHANGED_EVENT
+} from '../../utils/testModeSession';
 
-const ONGOING_MESSAGING_STATUSES = new Set(['accepted', 'paid', 'active', 'ongoing']);
+const ONGOING_MESSAGING_STATUSES = CURRENT_RESERVATION_STATUSES;
 
 const normalizeDateOnly = (value) => {
   const parsedDate = value ? new Date(value) : null;
@@ -36,9 +42,10 @@ const Header = () => {
   const [unreadCount, setUnreadCount] = useState(0);
   const [messageBadgeCount, setMessageBadgeCount] = useState(0);
   const [hasMessagingAccess, setHasMessagingAccess] = useState(false);
+  const [hasTestInstructions, setHasTestInstructions] = useState(isTestModeInstructionsAvailable());
   const location = useLocation();
   const mobileMenuRef = useRef(null);
-  const { user, userProfile, loading } = useAuth();
+  const { user, userProfile, loading, isTester } = useAuth();
   const isAuthenticated = !loading && !!user;
 
   const publicNavigationItems = [
@@ -72,6 +79,14 @@ const Header = () => {
     }
   ];
 
+  if (isTester) {
+    privateNavigationItems?.push({
+      label: 'Mes essais',
+      path: '/participant-configuration-contexte-authentification',
+      icon: 'FlaskConical'
+    });
+  }
+
   if (hasMessagingAccess) {
     privateNavigationItems?.push({
       label: 'Messages',
@@ -84,14 +99,6 @@ const Header = () => {
   const navigationItems = isAuthenticated
     ? [...publicNavigationItems, ...privateNavigationItems]
     : publicNavigationItems;
-
-  if (isAuthenticated && userProfile?.is_admin === true) {
-    navigationItems?.push({
-      label: 'Administration',
-      path: '/administration-tableau-bord',
-      icon: 'Shield'
-    });
-  }
 
   const formatTimestamp = (timestamp) => {
     if (!timestamp) return '';
@@ -132,7 +139,9 @@ const Header = () => {
       document_uploaded: 'FileText',
       review_received: 'Star',
       annonce_approved: 'CheckCircle',
-      annonce_rejected: 'XCircle'
+      annonce_rejected: 'XCircle',
+      demande_approved: 'CheckCircle',
+      demande_rejected: 'XCircle'
     };
 
     return iconByType?.[type] || 'Bell';
@@ -154,7 +163,9 @@ const Header = () => {
       document_uploaded: 'Document',
       review_received: 'Nouvel avis',
       annonce_approved: 'Annonce validée',
-      annonce_rejected: 'Annonce refusée'
+      annonce_rejected: 'Annonce refusée',
+      demande_approved: 'Demande publiée',
+      demande_rejected: 'Demande refusée'
     };
 
     return labels?.[notification?.type] || 'Notification';
@@ -228,6 +239,22 @@ const Header = () => {
       setShowNotifications(false);
     }
   }, [isAuthenticated, showNotifications]);
+
+  useEffect(() => {
+    const refreshInstructionButton = (event) => {
+      if (event?.detail && typeof event.detail?.isAvailable === 'boolean') {
+        setHasTestInstructions(event.detail.isAvailable);
+        return;
+      }
+
+      setHasTestInstructions(isTestModeInstructionsAvailable());
+    };
+
+    window.addEventListener(TEST_MODE_INSTRUCTIONS_CHANGED_EVENT, refreshInstructionButton);
+    return () => {
+      window.removeEventListener(TEST_MODE_INSTRUCTIONS_CHANGED_EVENT, refreshInstructionButton);
+    };
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -401,6 +428,16 @@ const Header = () => {
           <div className="header-actions">
             {isAuthenticated ? (
               <>
+                {hasTestInstructions && (
+                  <button
+                    type="button"
+                    onClick={requestOpenTestModeInstructions}
+                    className="hidden h-10 items-center justify-center rounded-lg border border-border bg-white px-4 text-sm font-medium text-foreground transition-colors hover:bg-surface md:inline-flex"
+                  >
+                    Consigne
+                  </button>
+                )}
+
                 <div className="relative">
                   <button
                     onClick={() => setShowNotifications(!showNotifications)}
@@ -505,6 +542,19 @@ const Header = () => {
           </nav>
 
           <div className="mt-auto pt-4 border-t border-border">
+            {hasTestInstructions && (
+              <button
+                type="button"
+                onClick={() => {
+                  requestOpenTestModeInstructions();
+                  closeMobileMenu();
+                }}
+                className="mb-3 flex w-full items-center justify-center rounded-lg border border-border bg-white px-4 py-3 font-medium text-foreground transition-colors hover:bg-surface"
+              >
+                Consigne
+              </button>
+            )}
+
             {isAuthenticated ? (
               <UserMenu isMobile={true} />
             ) : (

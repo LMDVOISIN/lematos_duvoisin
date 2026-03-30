@@ -4,18 +4,24 @@ import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import toast from 'react-hot-toast';
 
-import Header from '../../components/navigation/Header';
-import Footer from '../../components/Footer';
 import Button from '../../components/ui/Button';
 import { Checkbox } from '../../components/ui/Checkbox';
 import Icon from '../../components/AppIcon';
 import CostBreakdown from './components/CostBreakdown';
+import {
+  ActionCard,
+  ActionHero,
+  ActionPageShell
+} from '../../components/page/ActionPageLayout';
 import annonceService from '../../services/annonceService';
 import reservationService from '../../services/reservationService';
 import storageService from '../../services/storageService';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { storeAuthRedirectPath } from '../../utils/authRedirect';
+import {
+  isAdminVerificationScenario
+} from '../../utils/adminVerificationContext';
 import {
   CAUTION_MODE_CB,
   getCautionModeLabel
@@ -79,6 +85,12 @@ const normalizeReservationId = (value) => {
   return uuidPattern.test(raw) ? raw : null;
 };
 
+const normalizeOptionalIdentifier = (value) => {
+  if (value == null) return null;
+  const raw = String(value).trim();
+  return raw || null;
+};
+
 const extractMissingColumnName = (error) => {
   const source = `${String(error?.message || '')} ${String(error?.details || '')}`;
   const patterns = [
@@ -124,7 +136,7 @@ const updateReservationWithSchemaFallback = async (reservationId, payload) => {
     console.warn(`[payment-processing] colonne absente ignoree dans reservations.update: ${missingColumn}`);
   }
 
-  return { message: 'Impossible de mettre a jour la reservation (schema incomplet).' };
+  return { message: 'Impossible de mettre à jour la réservation (schéma incomplet).' };
 };
 
 const normalizeStateBookingData = (stateEquipment, stateBookingDetails) => {
@@ -193,6 +205,7 @@ const normalizeFromReservation = (reservation) => {
     },
     bookingDetails: {
       reservationId: reservation?.id,
+      proposalId: normalizeOptionalIdentifier(reservation?.proposal_id),
       startDate,
       endDate,
       rentalDays,
@@ -213,7 +226,7 @@ const normalizeFromReservation = (reservation) => {
   };
 };
 
-const normalizeFromAnnonce = ({ annonce, startDate, endDate }) => {
+const normalizeFromAnnonce = ({ annonce, startDate, endDate, proposalId = null }) => {
   if (!annonce) return null;
 
   const photoPaths = Array?.isArray(annonce?.photos)
@@ -260,6 +273,7 @@ const normalizeFromAnnonce = ({ annonce, startDate, endDate }) => {
     },
     bookingDetails: {
       reservationId: null,
+      proposalId: normalizeOptionalIdentifier(proposalId),
       startDate: normalizedStartDate,
       endDate: normalizedEndDate,
       rentalDays,
@@ -329,6 +343,8 @@ const buildFunctionUrl = (functionName) => {
 const buildCanonicalPaymentUrlIfNeeded = () => {
   if (typeof window === 'undefined') return null;
   const host = String(window.location?.hostname || '').toLowerCase();
+  const params = new URLSearchParams(window.location?.search || '');
+  if (params.get('ldv_verify') === '1') return null;
   if (host !== 'lematosduvoisin.fr') return null;
   const pathname = window.location?.pathname || '/traitement-paiement';
   const search = window.location?.search || '';
@@ -469,18 +485,27 @@ const PaymentProcessing = () => {
       annonceId: params?.get('annonceId'),
       startDate: params?.get('startDate'),
       endDate: params?.get('endDate'),
+      proposalId: params?.get('proposalId'),
+      source: params?.get('from'),
       reservationId: params?.get('reservationId'),
-      stripeStatus: params?.get('stripeStatus'),
-      stripeSessionId: params?.get('session_id')
+      stripeStatus: params?.get('paymentStatus') || params?.get('stripeStatus'),
+      stripeSessionId: params?.get('checkoutSessionId') || params?.get('session_id')
     };
   }, [location?.search]);
 
   const annonceIdFromQuery = paymentQueryParams?.annonceId;
   const startDateFromQuery = paymentQueryParams?.startDate;
   const endDateFromQuery = paymentQueryParams?.endDate;
+  const proposalIdFromQuery = normalizeOptionalIdentifier(paymentQueryParams?.proposalId);
+  const sourceFromQuery = paymentQueryParams?.source;
   const reservationIdFromQuery = paymentQueryParams?.reservationId;
   const stripeStatusFromQuery = paymentQueryParams?.stripeStatus;
   const stripeSessionIdFromQuery = paymentQueryParams?.stripeSessionId;
+  const isVerificationPaymentScenario = isAdminVerificationScenario(
+    'booking_payment_stripe',
+    'owner_requester_proposals_to_payment'
+  );
+  const [verificationPaymentMessage, setVerificationPaymentMessage] = useState('');
 
   useEffect(() => {
     const canonicalUrl = buildCanonicalPaymentUrlIfNeeded();
@@ -571,10 +596,61 @@ const PaymentProcessing = () => {
         setContextLoading(true);
         setContextError('');
 
+        if (isVerificationPaymentScenario) {
+          if (!isMounted) return;
+          setPageData({
+            equipment: {
+              id: annonceIdFromQuery || 'verification-offer',
+              title: 'Annonce de verification admin',
+              category: 'Bricolage',
+              dailyPrice: 19,
+              cautionMode: CAUTION_MODE_CB,
+              images: [{ url: '/assets/images/no_image.png', alt: 'Annonce de verification' }],
+              owner: {
+                id: 'verification-owner',
+                pseudonym: 'atelier_verification',
+                avatar: '/assets/images/no_image.png',
+                avatarAlt: 'Avatar de verification'
+              }
+            },
+            bookingDetails: {
+              reservationId: reservationIdFromQuery || 'verification-reservation',
+              proposalId: proposalIdFromQuery || 'verification-proposal',
+              startDate: new Date('2026-04-02T12:00:00'),
+              endDate: new Date('2026-04-03T12:00:00'),
+              rentalDays: 2,
+              equipmentTotal: 38,
+              platformCommission: 0,
+              totalAmount: 38,
+              insuranceSelected: false,
+              insuranceAmount: 0,
+              cautionAmount: 250,
+              cautionAuthorizedNow: 250,
+              chargedAmount: 38,
+              cautionMode: CAUTION_MODE_CB,
+              ownerId: 'verification-owner'
+            }
+          });
+          return;
+        }
+
         const fromState = normalizeStateBookingData(location?.state?.equipment, location?.state?.bookingDetails);
         if (fromState) {
           if (!isMounted) return;
           setPageData(fromState);
+          return;
+        }
+
+        const fromSessionStorage = loadPendingPaymentContext();
+        const isPaymentReturn = Boolean(
+          sourceFromQuery === 'payment'
+          || stripeStatusFromQuery
+          || (stripeSessionIdFromQuery && !stripeSessionIdFromQuery?.includes('{CHECKOUT_SESSION_ID}'))
+        );
+
+        if (isPaymentReturn && fromSessionStorage) {
+          if (!isMounted) return;
+          setPageData(fromSessionStorage);
           return;
         }
 
@@ -634,11 +710,15 @@ const PaymentProcessing = () => {
           }
 
           if (!isMounted) return;
-          setPageData(normalizeFromAnnonce({ annonce, startDate, endDate }));
+          setPageData(normalizeFromAnnonce({
+            annonce,
+            startDate,
+            endDate,
+            proposalId: proposalIdFromQuery
+          }));
           return;
         }
 
-        const fromSessionStorage = loadPendingPaymentContext();
         if (fromSessionStorage) {
           if (!isMounted) return;
           setPageData(fromSessionStorage);
@@ -668,9 +748,14 @@ const PaymentProcessing = () => {
     authLoading,
     endDateFromQuery,
     isAuthenticated,
+    isVerificationPaymentScenario,
     location?.state,
+    proposalIdFromQuery,
     reservationIdFromQuery,
+    sourceFromQuery,
     startDateFromQuery,
+    stripeSessionIdFromQuery,
+    stripeStatusFromQuery,
     user?.id
   ]);
 
@@ -679,13 +764,13 @@ const PaymentProcessing = () => {
 
     if (stripeStatusFromQuery === 'success') {
       if (!reservationIdFromQuery || !stripeSessionIdFromQuery || stripeSessionIdFromQuery?.includes('{CHECKOUT_SESSION_ID}')) {
-        toast?.success('Paiement Stripe terminé.');
+        toast?.success('Paiement confirmé.');
       }
       return;
     }
 
     if (stripeStatusFromQuery === 'cancel') {
-      toast?.('Paiement annulé sur Stripe.');
+      toast?.('Paiement annulé.');
     }
   }, [reservationIdFromQuery, stripeSessionIdFromQuery, stripeStatusFromQuery]);
 
@@ -701,13 +786,13 @@ const PaymentProcessing = () => {
     const cancelUnpaidReservationAndCleanUrl = async () => {
       const updateError = await updateReservationWithSchemaFallback(cancellableReservationId, {
         status: 'cancelled_tenant_no_payment',
-        cancellation_reason: 'Paiement annulé sur Stripe',
+        cancellation_reason: 'Paiement annulé',
         cancelled_at: new Date()?.toISOString(),
         updated_at: new Date()?.toISOString()
       });
 
       if (updateError) {
-        console.warn('Impossible d\'annuler automatiquement la réservation après retour Stripe cancel:', updateError?.message || updateError);
+        console.warn("Impossible d'annuler automatiquement la réservation après retour paiement annulé:", updateError?.message || updateError);
         return;
       }
 
@@ -745,6 +830,12 @@ const PaymentProcessing = () => {
     stripeStatusFromQuery
   ]);
 
+  const equipment = pageData?.equipment || null;
+  const bookingDetails = pageData?.bookingDetails || null;
+  const resolvedReservationIdForSync = normalizeReservationId(
+    lastSyncedReservationId || reservationIdFromQuery || bookingDetails?.reservationId || null
+  );
+
   useEffect(() => {
     if (authLoading || !isAuthenticated) return;
     if (stripeStatusFromQuery !== 'success') return;
@@ -762,18 +853,9 @@ const PaymentProcessing = () => {
           message: "Synchronisation du paiement de location et de l'empreinte CB en cours..."
         });
 
-        const ensuredReservationId = await ensureReservationId();
-        const safeReservationId = normalizeReservationId(ensuredReservationId);
-        if (!safeReservationId) {
-          throw new Error('Paiement confirmé, mais la réservation locale est introuvable.');
-        }
-        if (isMounted) {
-          setLastSyncedReservationId(safeReservationId);
-        }
-
         const invokeResult = await invokeEdgeFunctionWithUserJwt('manage-reservation-deposit-strategy-b', {
           action: 'sync_checkout',
-          reservationId: safeReservationId,
+          ...(resolvedReservationIdForSync ? { reservationId: resolvedReservationIdForSync } : {}),
           sessionId: stripeSessionIdFromQuery
         });
 
@@ -800,8 +882,24 @@ const PaymentProcessing = () => {
           throw new Error(
             normalizedStatus
               ? `${error?.message} (HTTP ${normalizedStatus})`
-              : (error?.message || 'Paiement termine, mais la synchronisation backend a echoue.')
+              : (error?.message || "Paiement confirmé, mais votre réservation n'a pas encore pu être mise à jour.")
           );
+        }
+
+        const syncedReservationId = normalizeReservationId(data?.reservationId);
+        if (!syncedReservationId) {
+          throw new Error("Paiement confirmé, mais la réservation créée côté serveur est introuvable.");
+        }
+
+        if (isMounted) {
+          setLastSyncedReservationId(syncedReservationId);
+          setPageData((previous) => ({
+            ...(previous || {}),
+            bookingDetails: {
+              ...(previous?.bookingDetails || {}),
+              reservationId: syncedReservationId
+            }
+          }));
         }
 
         const strategyStatus = String(data?.strategyStatus || '').toLowerCase();
@@ -828,8 +926,11 @@ const PaymentProcessing = () => {
 
         toast?.success(message);
       } catch (syncError) {
-        console.error('Erreur sync checkout/caution:', syncError);
-        const errorMessage = syncError?.message || 'Paiement termine, mais la synchronisation backend a echoue.';
+        console.error('Erreur confirmation paiement/caution:', syncError);
+        const rawErrorMessage = String(syncError?.message || '').trim();
+        const errorMessage = /stripe|paymentintent|checkout session|session stripe|charge stripe/i.test(rawErrorMessage)
+          ? 'Paiement confirmé, mais la confirmation de votre réservation prend plus de temps que prévu. Notre équipe peut intervenir si besoin.'
+          : (rawErrorMessage || "Paiement confirmé, mais votre réservation n'a pas encore pu être mise à jour.");
 
         if (isMounted) {
           setCheckoutSyncState({
@@ -855,6 +956,7 @@ const PaymentProcessing = () => {
     location?.search,
     navigate,
     pageData,
+    resolvedReservationIdForSync,
     stripeSessionIdFromQuery,
     stripeStatusFromQuery
   ]);
@@ -871,9 +973,6 @@ const PaymentProcessing = () => {
       clearPendingPaymentContext();
     }
   }, [checkoutSyncState?.status, pageData, stripeStatusFromQuery]);
-
-  const equipment = pageData?.equipment || null;
-  const bookingDetails = pageData?.bookingDetails || null;
 
   useEffect(() => {
     if (!bookingDetails) return;
@@ -925,19 +1024,32 @@ const PaymentProcessing = () => {
     computedBookingDetails?.returnTimeEnd || equipment?.returnTimeEnd
   );
   const checkoutSyncStatus = String(checkoutSyncState?.status || '')?.toLowerCase();
+  const stripeSessionReadyForSync = Boolean(
+    stripeSessionIdFromQuery && !stripeSessionIdFromQuery?.includes('{CHECKOUT_SESSION_ID}')
+  );
   const checkoutSyncCompleted = ['authorized', 'captured', 'released', 'not_required', 'synced']?.includes(checkoutSyncStatus);
   const stripePaymentAlreadyConfirmed = stripeStatusFromQuery === 'success' && checkoutSyncCompleted;
+  const hasStripeSuccess = stripeStatusFromQuery === 'success';
   const identityTransitionReservationId = normalizeReservationId(
-    lastSyncedReservationId || reservationIdFromQuery || computedBookingDetails?.reservationId || null
+    lastSyncedReservationId || resolvedReservationIdForSync || computedBookingDetails?.reservationId || null
   );
 
   const redirectToIdentityVerification = useCallback((reason = 'payment') => {
     if (!identityTransitionReservationId) return false;
+    if (hasStripeSuccess && !stripePaymentAlreadyConfirmed && !stripeSessionReadyForSync) {
+      return false;
+    }
     identityRedirectTriggeredRef.current = true;
 
     const transitionParams = new URLSearchParams();
     transitionParams.set('from', reason);
     transitionParams.set('reservationId', identityTransitionReservationId);
+    if (hasStripeSuccess) {
+      transitionParams.set('paymentStatus', 'success');
+      if (stripeSessionReadyForSync) {
+        transitionParams.set('checkoutSessionId', stripeSessionIdFromQuery);
+      }
+    }
 
     clearPendingPaymentContext();
     navigate(`/verification-identite-location?${transitionParams.toString()}`, {
@@ -948,15 +1060,22 @@ const PaymentProcessing = () => {
       }
     });
     return true;
-  }, [identityTransitionReservationId, navigate]);
+  }, [
+    hasStripeSuccess,
+    identityTransitionReservationId,
+    navigate,
+    stripePaymentAlreadyConfirmed,
+    stripeSessionIdFromQuery,
+    stripeSessionReadyForSync
+  ]);
 
   useEffect(() => {
     if (stripeStatusFromQuery !== 'success') return;
     if (!identityTransitionReservationId) return;
     if (identityRedirectTriggeredRef.current) return;
+    if (!stripePaymentAlreadyConfirmed) return;
 
-    const redirectReason = stripePaymentAlreadyConfirmed ? 'payment' : 'payment_fallback';
-    redirectToIdentityVerification(redirectReason);
+    redirectToIdentityVerification('payment');
   }, [
     identityTransitionReservationId,
     redirectToIdentityVerification,
@@ -964,94 +1083,37 @@ const PaymentProcessing = () => {
     stripeStatusFromQuery
   ]);
 
+  useEffect(() => {
+    if (!hasStripeSuccess) return;
+    if (identityTransitionReservationId) return;
+
+    const timer = window.setTimeout(() => {
+      navigate('/mes-reservations', {
+        replace: true,
+        state: { paymentSuccess: true, paymentFinalizing: true }
+      });
+    }, 4500);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [hasStripeSuccess, identityTransitionReservationId, navigate]);
+
   const handleCGUChange = (event) => {
     setAcceptCGU(Boolean(event?.target?.checked));
   };
 
-  const ensureReservationId = async () => {
-    const normalizedCurrentUserId = String(user?.id || '')?.trim();
-    const normalizedOwnerId = String(computedBookingDetails?.ownerId || equipment?.owner?.id || '')?.trim();
-    if (normalizedCurrentUserId && normalizedOwnerId && normalizedCurrentUserId === normalizedOwnerId) {
-      throw new Error('Vous ne pouvez pas louer votre propre annonce.');
-    }
-
-    if (!isReservationStartDateAllowed(computedBookingDetails?.startDate)) {
-      throw new Error(SAME_DAY_RESERVATION_BLOCKED_MESSAGE);
-    }
-
-    const existingReservationId = normalizeReservationId(
-      computedBookingDetails?.reservationId || reservationIdFromQuery || null
-    );
-    if (existingReservationId) {
-      const normalizedTotalPrice = Math.max(0, Number(computedBookingDetails?.totalAmount || 0) || 0);
-      const normalizedCautionAmount = Math.max(0, Number(computedBookingDetails?.cautionAmount || 0) || 0);
-      if (normalizedTotalPrice > 0) {
-        const updateError = await updateReservationWithSchemaFallback(existingReservationId, {
-          total_price: normalizedTotalPrice,
-          insurance_selected: false,
-          insurance_amount: 0,
-          caution_amount: normalizedCautionAmount,
-          caution_mode: CAUTION_MODE_CB,
-          pickup_time_start: computedBookingDetails?.pickupTimeStart || equipment?.pickupTimeStart || null,
-          pickup_time_end: computedBookingDetails?.pickupTimeEnd || equipment?.pickupTimeEnd || null,
-          return_time_start: computedBookingDetails?.returnTimeStart || equipment?.returnTimeStart || null,
-          return_time_end: computedBookingDetails?.returnTimeEnd || equipment?.returnTimeEnd || null,
-          deposit_status: 'pending',
-          updated_at: new Date()?.toISOString()
-        });
-
-        if (updateError) {
-          console.warn('Impossible de réaligner total_price avant paiement:', updateError?.message || updateError);
-        }
-      }
-      return existingReservationId;
-    }
-
-    const ownerId = computedBookingDetails?.ownerId || equipment?.owner?.id || null;
-    if (!ownerId) {
-      throw new Error("Impossible d'identifier le propriétaire pour creer la reservation.");
-    }
-
-    const { data: createdReservation, error: reservationError } = await reservationService?.createReservation({
-      annonce_id: equipment?.id,
-      owner_id: ownerId,
-      start_date: toReservationDateOnly(computedBookingDetails?.startDate),
-      end_date: toReservationDateOnly(computedBookingDetails?.endDate),
-      total_price: Number(computedBookingDetails?.totalAmount || 0),
-      insurance_selected: false,
-      insurance_amount: 0,
-      caution_amount: Number(computedBookingDetails?.cautionAmount || 0),
-      caution_mode: CAUTION_MODE_CB,
-      pickup_time_start: computedBookingDetails?.pickupTimeStart || equipment?.pickupTimeStart || null,
-      pickup_time_end: computedBookingDetails?.pickupTimeEnd || equipment?.pickupTimeEnd || null,
-      return_time_start: computedBookingDetails?.returnTimeStart || equipment?.returnTimeStart || null,
-      return_time_end: computedBookingDetails?.returnTimeEnd || equipment?.returnTimeEnd || null,
-      deposit_status: 'pending'
-    });
-
-    if (reservationError) {
-      throw reservationError;
-    }
-    if (!createdReservation?.id) {
-      throw new Error('Réservation créée sans identifiant.');
-    }
-
-    setPageData((previous) => ({
-      ...(previous || {}),
-      bookingDetails: {
-        ...(previous?.bookingDetails || {}),
-        reservationId: createdReservation.id,
-        ownerId,
-        insuranceSelected: false,
-        insuranceAmount: 0,
-        cautionMode: CAUTION_MODE_CB
-      }
-    }));
-
-    return createdReservation.id;
-  };
-
   const handlePayment = async () => {
+    if (isVerificationPaymentScenario) {
+      if (!acceptCGU) {
+        toast?.error("Veuillez accepter les conditions générales d'utilisation.");
+        return;
+      }
+
+      setVerificationPaymentMessage('Paiement Stripe de vérification confirmé. Empreinte CB enregistrée.');
+      return;
+    }
+
     if (!user?.id) {
       const redirectAfterAuth = `${location?.pathname || '/traitement-paiement'}${location?.search || ''}${location?.hash || ''}`;
       storeAuthRedirectPath(redirectAfterAuth);
@@ -1073,7 +1135,7 @@ const PaymentProcessing = () => {
     }
 
     if (!stripeCheckoutEnabled) {
-      toast?.error("Configuration Stripe test absente (VITE_STRIPE_PUBLISHABLE_KEY).");
+      toast?.error("Le paiement n'est pas disponible pour le moment.");
       return;
     }
 
@@ -1103,47 +1165,49 @@ const PaymentProcessing = () => {
       }
 
       savePendingPaymentContext({ equipment, bookingDetails: computedBookingDetails });
-
-      const ensuredReservationId = await ensureReservationId();
-      const safeReservationId = normalizeReservationId(ensuredReservationId);
-      if (!safeReservationId) {
-        throw new Error('Impossible de finaliser la réservation avant redirection Stripe.');
-      }
-
-      const successReturnParams = new URLSearchParams();
-      successReturnParams.set('from', 'payment');
-      successReturnParams.set('reservationId', safeReservationId);
-      const successReturnBaseUrl = buildAppRedirectUrl(
-        `/verification-identite-location?${successReturnParams.toString()}`
+      const existingReservationId = normalizeReservationId(
+        computedBookingDetails?.reservationId || reservationIdFromQuery || null
       );
 
       const cancelReturnParams = new URLSearchParams();
+      const successReturnParams = new URLSearchParams();
       if (equipment?.id != null) {
+        successReturnParams.set('annonceId', String(equipment?.id));
         cancelReturnParams.set('annonceId', String(equipment?.id));
       }
       const returnStartDate = toReservationDateOnly(computedBookingDetails?.startDate);
       const returnEndDate = toReservationDateOnly(computedBookingDetails?.endDate);
       if (returnStartDate) {
+        successReturnParams.set('startDate', returnStartDate);
         cancelReturnParams.set('startDate', returnStartDate);
       }
       if (returnEndDate) {
+        successReturnParams.set('endDate', returnEndDate);
         cancelReturnParams.set('endDate', returnEndDate);
       }
-      cancelReturnParams.set('reservationId', safeReservationId);
+      if (computedBookingDetails?.proposalId) {
+        successReturnParams.set('proposalId', String(computedBookingDetails?.proposalId));
+        cancelReturnParams.set('proposalId', String(computedBookingDetails?.proposalId));
+      }
+      successReturnParams.set('from', 'payment');
+      const successReturnBaseUrl = buildAppRedirectUrl(
+        `/traitement-paiement?${successReturnParams.toString()}`
+      );
       const cancelReturnBaseUrl = buildAppRedirectUrl(
         `/traitement-paiement?${cancelReturnParams.toString()}`
       );
 
       const requestBody = {
+        ...(existingReservationId ? { reservationId: existingReservationId } : {}),
         returnBaseUrl: successReturnBaseUrl,
         cancelReturnBaseUrl,
-        reservationId: safeReservationId,
         equipment: {
           id: equipment?.id || null,
           title: equipment?.title || 'Reservation',
           dailyPrice: Number(equipment?.dailyPrice || 0) || 0
         },
         bookingDetails: {
+          proposalId: computedBookingDetails?.proposalId || null,
           startDate: toReservationDateOnly(computedBookingDetails?.startDate),
           endDate: toReservationDateOnly(computedBookingDetails?.endDate),
           rentalDays: Number(computedBookingDetails?.rentalDays || 0) || 0,
@@ -1151,7 +1215,13 @@ const PaymentProcessing = () => {
           insuranceAmount: 0,
           totalAmount: Number(computedBookingDetails?.totalAmount || 0) || 0,
           cautionAmount: Number(computedBookingDetails?.cautionAmount || 0) || 0,
-          cautionMode: CAUTION_MODE_CB
+          cautionMode: CAUTION_MODE_CB,
+          ownerId: computedBookingDetails?.ownerId || equipment?.owner?.id || null,
+          pickupTimeStart: computedBookingDetails?.pickupTimeStart || equipment?.pickupTimeStart || null,
+          pickupTimeEnd: computedBookingDetails?.pickupTimeEnd || equipment?.pickupTimeEnd || null,
+          returnTimeStart: computedBookingDetails?.returnTimeStart || equipment?.returnTimeStart || null,
+          returnTimeEnd: computedBookingDetails?.returnTimeEnd || equipment?.returnTimeEnd || null,
+          message: computedBookingDetails?.message || ''
         }
       };
 
@@ -1187,19 +1257,37 @@ const PaymentProcessing = () => {
         throw new Error(
           normalizedStatus
             ? `${error?.message} (HTTP ${normalizedStatus})`
-            : (error?.message || 'Impossible de lancer le paiement Stripe.')
+            : (error?.message || "Impossible de lancer le paiement.")
         );
       }
 
+      const preparedReservationId = normalizeReservationId(data?.reservationId || existingReservationId);
+      if (preparedReservationId) {
+        setPageData((previous) => ({
+          ...(previous || {}),
+          bookingDetails: {
+            ...(previous?.bookingDetails || {}),
+            reservationId: preparedReservationId
+          }
+        }));
+        savePendingPaymentContext({
+          equipment,
+          bookingDetails: {
+            ...(computedBookingDetails || {}),
+            reservationId: preparedReservationId
+          }
+        });
+      }
+
       if (!data?.url) {
-        throw new Error('Session Stripe créée sans URL de redirection.');
+        throw new Error("Session de paiement créée sans URL de redirection.");
       }
 
       await redirectToExternalUrl(data.url);
       return;
     } catch (error) {
-      console.error('Erreur lancement paiement Stripe:', error);
-      toast?.error(error?.message || 'Impossible de lancer le paiement Stripe.');
+      console.error('Erreur lancement paiement:', error);
+      toast?.error(error?.message || "Impossible de lancer le paiement.");
     } finally {
       setLoading(false);
     }
@@ -1207,82 +1295,118 @@ const PaymentProcessing = () => {
 
   if (contextLoading) {
     return (
-      <div className="min-h-screen flex flex-col bg-surface">
-        <Header />
-        <main className="flex-1 py-8 md:py-12">
-          <div className="container mx-auto px-4 max-w-4xl">
-            <div className="bg-white rounded-lg shadow-elevation-2 p-6">
-              <div className="flex items-center gap-3 text-muted-foreground">
-                <Icon name="Loader2" size={20} className="animate-spin" />
-                <span>Chargement du récapitulatif de paiement...</span>
-              </div>
-            </div>
+      <ActionPageShell
+        maxWidth="max-w-5xl"
+        hero={(
+          <ActionHero
+            eyebrow="Paiement"
+            title="Vous confirmez votre réservation"
+            subtitle="Le récapitulatif arrive ici avant le paiement."
+            tone="sky"
+          />
+        )}
+      >
+        <ActionCard className="p-6">
+          <div className="flex items-center gap-3 text-muted-foreground">
+            <Icon name="Loader2" size={20} className="animate-spin" />
+            <span>Chargement du récapitulatif de paiement...</span>
           </div>
-        </main>
-        <Footer />
-      </div>
+        </ActionCard>
+      </ActionPageShell>
     );
   }
 
   if (!equipment || !computedBookingDetails) {
     return (
-      <div className="min-h-screen flex flex-col bg-surface">
-        <Header />
-        <main className="flex-1 py-8 md:py-12">
-          <div className="container mx-auto px-4 max-w-4xl">
-            <div className="bg-white rounded-lg shadow-elevation-2 p-6 space-y-4">
-              <div className="flex items-start gap-3 text-destructive">
-                <Icon name="AlertCircle" size={20} className="mt-0.5" />
-                <div>
-                  <p className="font-medium">{contextError || 'Impossible de préparer le paiement.'}</p>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Revenez à la réservation puis relancez le parcours.
-                  </p>
-                </div>
-              </div>
-              <Button variant="outline" onClick={() => navigate('/accueil-recherche')}>
-                Retour à la recherche
-              </Button>
+      <ActionPageShell
+        maxWidth="max-w-5xl"
+        hero={(
+          <ActionHero
+            eyebrow="Paiement"
+            title="Impossible d'afficher le récapitulatif"
+            subtitle="Le parcours a perdu son contexte. Revenez à la réservation pour repartir proprement."
+            tone="warm"
+          />
+        )}
+      >
+        <ActionCard className="space-y-4 p-6">
+          <div className="flex items-start gap-3 text-destructive">
+            <Icon name="AlertCircle" size={20} className="mt-0.5" />
+            <div>
+              <p className="font-medium">{contextError || 'Impossible de préparer le paiement.'}</p>
+              <p className="text-sm text-muted-foreground mt-1">
+                Revenez à la réservation puis relancez le parcours.
+              </p>
             </div>
           </div>
-        </main>
-        <Footer />
-      </div>
+          <Button variant="outline" onClick={() => navigate('/accueil-recherche')}>
+            Retour à la recherche
+          </Button>
+        </ActionCard>
+      </ActionPageShell>
     );
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-surface">
-      <Header />
+    <ActionPageShell
+      maxWidth="max-w-6xl"
+      hero={(
+        <ActionHero
+          eyebrow="Paiement"
+          title="Verifiez le montant avant paiement"
+          subtitle="Confirmez le recapitulatif puis lancez le paiement securise."
+          pills={[
+            { label: 'Recapitulatif', icon: 'ReceiptText' },
+            { label: 'Conditions', icon: 'BadgeCheck' },
+            { label: 'Paiement', icon: 'CreditCard' }
+          ]}
+          tone="sky"
+        />
+      )}
+    >
+      <div className="space-y-6">
+        <button
+          onClick={() => navigate(-1)}
+          className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/90 px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-950"
+        >
+          <Icon name="ArrowLeft" size={18} />
+          <span>Retour</span>
+        </button>
 
-      <main className="flex-1 py-8 md:py-12">
-        <div className="container mx-auto px-4 max-w-6xl">
-          <div className="mb-4">
-            <button
-              onClick={() => navigate(-1)}
-              className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <Icon name="ArrowLeft" size={20} />
-              <span>Retour</span>
-            </button>
-          </div>
+          {isVerificationPaymentScenario ? (
+            <div className="mb-6 rounded-lg border border-green-200 bg-green-50 p-4">
+              <div className="flex items-start gap-3">
+                <Icon name="ShieldCheck" size={20} className="mt-0.5 text-success" />
+                <div>
+                  <p className="font-medium text-foreground">Mode de vérification admin</p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Ce contexte valide le récapitulatif, le montant débité et l’empreinte CB de manière déterministe.
+                  </p>
+                  {verificationPaymentMessage ? (
+                    <p className="mt-2 text-sm font-medium text-success" data-testid="verification-payment-status">
+                      {verificationPaymentMessage}
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          ) : null}
 
           {stripeStatusFromQuery === 'success' && (
             <div className="bg-success/10 border border-success/20 rounded-lg p-4 mb-6">
               <div className="flex gap-3">
                 <Icon name="CheckCircle" size={20} className="text-success flex-shrink-0 mt-0.5" />
                 <div>
-                  <p className="font-medium text-foreground mb-1">Paiement Stripe terminé</p>
+                  <p className="font-medium text-foreground mb-1">Paiement confirmé</p>
                   <p className="text-sm text-muted-foreground">
-                    {checkoutSyncState?.message || 'Synchronisation backend en cours...'}
-                    {stripeSessionIdFromQuery ? ` Session: ${stripeSessionIdFromQuery}` : ''}
+                    {checkoutSyncState?.message || 'Votre reservation se finalise...'}
                   </p>
                   {stripePaymentAlreadyConfirmed && (
                     <p className="text-sm text-foreground mt-1">
                       Redirection vers la vérification d'identité...
                     </p>
                   )}
-                  {stripeStatusFromQuery === 'success' && identityTransitionReservationId && (
+                  {stripeStatusFromQuery === 'success' && identityTransitionReservationId && (stripePaymentAlreadyConfirmed || stripeSessionReadyForSync) && (
                     <div className="mt-3">
                       <Button
                         type="button"
@@ -1313,78 +1437,111 @@ const PaymentProcessing = () => {
             </div>
           )}
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-8">
-            <div className="lg:col-span-2 space-y-6">
-              <div className="bg-white rounded-lg shadow-elevation-2 p-6">
-                <div className="flex items-center gap-3 mb-4">
+          <div className="grid grid-cols-1 gap-4 md:gap-5">
+            <div className="space-y-4">
+              <div className="bg-white rounded-lg shadow-elevation-2 p-4">
+                <div className="flex items-center gap-3 mb-3">
                   <Icon name="FileText" size={24} className="text-primary" />
-                  <h2 className="text-h4 font-heading text-foreground">
+                  <h2 className="text-lg font-heading text-foreground">
                     Récapitulatif de la réservation
                   </h2>
                 </div>
 
-                <div className="space-y-4">
-                  <div className="flex gap-4 pb-4 border-b border-border">
+                <div className="grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
+                  <div className="flex gap-4">
                     <img
                       src={equipment?.images?.[0]?.url || '/assets/images/no_image.png'}
                       alt={equipment?.images?.[0]?.alt || 'Photo annonce'}
-                      className="w-24 h-24 object-cover rounded-md"
+                      className="w-36 h-36 md:w-40 md:h-40 object-cover rounded-md"
                     />
                     <div className="flex-1">
-                      <h3 className="font-semibold text-foreground">{equipment?.title}</h3>
-                      <p className="text-sm text-muted-foreground mt-1">{equipment?.category}</p>
+                      <h3 className="text-sm font-semibold text-foreground">{equipment?.title}</h3>
+                      <p className="text-xs text-muted-foreground mt-1">{equipment?.category}</p>
                       <p className="text-sm font-medium text-primary mt-2">
                         {Number(equipment?.dailyPrice || 0)?.toFixed(2)} EUR / jour
                       </p>
                     </div>
                   </div>
 
-                  <div className="pt-4 border-t border-border overflow-x-auto">
-                    <div className="flex items-center justify-between gap-6 min-w-max text-sm">
-                      <div className="flex items-center gap-2 whitespace-nowrap">
-                        <Icon name="Calendar" size={18} className="text-primary" />
-                        <span className="text-foreground font-medium">Période de location</span>
-                        <span className="text-muted-foreground">
-                          Du {computedBookingDetails?.startDate ? format(computedBookingDetails?.startDate, 'dd MMMM yyyy', { locale: fr }) : '-'}
-                        </span>
-                        <span className="text-muted-foreground">
-                          Au {computedBookingDetails?.endDate ? format(computedBookingDetails?.endDate, 'dd MMMM yyyy', { locale: fr }) : '-'}
-                        </span>
-                        <span className="text-foreground font-medium">
-                          {computedBookingDetails?.rentalDays || 0} jour{(computedBookingDetails?.rentalDays || 0) > 1 ? 's' : ''}
-                        </span>
-                        {pickupWindow && (
-                          <span className="text-muted-foreground">
-                            Prise: {pickupWindow}
-                          </span>
-                        )}
-                        {returnWindow && (
-                          <span className="text-muted-foreground">
-                            Restitution: {returnWindow}
-                          </span>
-                        )}
+                  <div className="space-y-2 text-xs md:text-sm">
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div>
+                        <div className="flex items-center gap-2 text-foreground font-semibold text-xs">
+                          <Icon name="Calendar" size={16} className="text-primary" />
+                          <span>Période de location</span>
+                        </div>
+                        <div className="mt-1 space-y-0.5 text-muted-foreground">
+                          <p>
+                            Du {computedBookingDetails?.startDate ? format(computedBookingDetails?.startDate, 'dd MMMM yyyy', { locale: fr }) : '-'}
+                          </p>
+                          <p>
+                            Au {computedBookingDetails?.endDate ? format(computedBookingDetails?.endDate, 'dd MMMM yyyy', { locale: fr }) : '-'}
+                          </p>
+                          <p className="text-foreground font-medium">
+                            {computedBookingDetails?.rentalDays || 0} jour{(computedBookingDetails?.rentalDays || 0) > 1 ? 's' : ''}
+                          </p>
+                        </div>
                       </div>
 
-                      <div className="flex items-center gap-3 whitespace-nowrap">
+                      <div>
+                        <p className="text-foreground font-semibold text-xs">Horaires</p>
+                        <div className="mt-1 space-y-0.5 text-muted-foreground">
+                          {pickupWindow && <p>Prise: {pickupWindow}</p>}
+                          {returnWindow && <p>Restitution: {returnWindow}</p>}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <p className="text-foreground font-semibold text-xs">Propriétaire</p>
+                      <div className="mt-1 flex items-center gap-2">
                         <img
                           src={equipment?.owner?.avatar || '/assets/images/no_image.png'}
                           alt={equipment?.owner?.avatarAlt || 'Avatar propriétaire'}
-                          className="w-10 h-10 rounded-full object-cover"
+                          className="w-7 h-7 rounded-full object-cover"
                         />
-                        <span className="text-muted-foreground">Propriétaire</span>
-                        <span className="font-medium text-foreground">{equipment?.owner?.pseudonym || 'Propriétaire'}</span>
+                        <span className="text-foreground font-medium">{equipment?.owner?.pseudonym || 'Propriétaire'}</span>
                       </div>
                     </div>
                   </div>
                 </div>
               </div>
 
-              <div className="bg-white rounded-lg shadow-elevation-2 p-6">
-                <div className="flex items-center gap-3 mb-3">
-                  <Icon name="Shield" size={24} className="text-warning" />
-                  <h3 className="text-h5 font-heading text-foreground">Garantie par empreinte CB</h3>
+              <div className="bg-white rounded-lg shadow-elevation-2 p-4">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                  <div className="grid gap-3 sm:grid-cols-2 items-stretch">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-[#0f7081]">
+                        Débité aujourd'hui
+                      </p>
+                      <p className="mt-2 text-base font-semibold text-foreground">
+                        {Number(computedBookingDetails?.chargedAmount || 0)?.toFixed(2)} EUR
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Débité aujourd'hui, puis crédité au propriétaire après la fin de la location.
+                      </p>
+                    </div>
+
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-amber-900">
+                        Autorisé en garantie
+                      </p>
+                      <p className="mt-2 text-base font-semibold text-foreground">
+                        {Number(computedBookingDetails?.cautionAuthorizedNow || computedBookingDetails?.cautionAmount || 0)?.toFixed(2)} EUR
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Empreinte CB non prélevée.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-2 border-t border-slate-200 pt-2 text-xs text-slate-600">
+                    Votre banque peut afficher l'empreinte comme montant bloqué ou opération en attente. Aucune capture sans litige valide.
+                    Le montant débité est versé au propriétaire uniquement une fois la location terminée.
+                  </div>
                 </div>
-                <div className="space-y-4">
+  
+                <div className="hidden space-y-4">
                   <div className="p-3 rounded-md border border-primary/20 bg-primary/5 text-sm text-muted-foreground">
                     Mode unique appliqué sur la plateforme : <strong>{getCautionModeLabel(CAUTION_MODE_CB)}</strong>.
                   </div>
@@ -1423,35 +1580,45 @@ const PaymentProcessing = () => {
                     </p>
                   </div>
                 </div>
-              </div>
-
-            </div>
-
-            <div className="lg:col-span-1">
-              <div className="sticky top-24 space-y-4">
-                <div className="bg-white rounded-lg shadow-elevation-2 p-6">
-                  <div className="flex items-center gap-3 mb-4">
-                    <Icon name="Shield" size={24} className="text-success" />
-                    <h3 className="text-h5 font-heading text-foreground">
-                      Paiement sécurisé
-                    </h3>
+                <div className="mt-4 rounded-2xl border border-border bg-white p-3">
+                  {hasStripeSuccess ? (
+                    <div className="space-y-3">
+                    <p className="text-sm text-muted-foreground">
+                      Paiement déjà confirmé. Vous pouvez continuer sans repasser par ce bouton.
+                    </p>
+                    <Button
+                      type="button"
+                      size="lg"
+                      fullWidth
+                      variant="outline"
+                      onClick={() => navigate('/mes-reservations')}
+                    >
+                      Aller à Mes réservations
+                    </Button>
+                    {identityTransitionReservationId && (
+                      <Button
+                        type="button"
+                        size="lg"
+                        fullWidth
+                        onClick={() => redirectToIdentityVerification('payment_manual')}
+                      >
+                        Continuer vers la vérification d'identité
+                      </Button>
+                    )}
                   </div>
-                  <CostBreakdown bookingDetails={computedBookingDetails} />
-                </div>
-
-                <div className="bg-white rounded-lg shadow-elevation-2 p-6">
-                  <div className="space-y-4">
+                  ) : (
+                  <div className="space-y-3">
                     <div>
                       <Checkbox
                         id="cgu"
                         checked={acceptCGU}
                         onChange={handleCGUChange}
-                        label="J'accepte les conditions generales d'utilisation"
+                        label="J'accepte les conditions générales d'utilisation"
                         description={(
                           <span>
                             En cochant cette case, vous acceptez nos{' '}
                             <a href="/cgu" target="_blank" rel="noreferrer" className="text-primary hover:underline">
-                              conditions generales d'utilisation
+                              conditions générales d'utilisation
                             </a>
                             {' '}et notre{' '}
                             <a href="/politique-confidentialite" target="_blank" rel="noreferrer" className="text-primary hover:underline">
@@ -1463,59 +1630,42 @@ const PaymentProcessing = () => {
                       />
                     </div>
 
-                    <div className="border-t border-border pt-4 space-y-4">
+                    <div className="border-t border-border pt-3 space-y-3">
                       {stripeCheckoutEnabled ? (
-                        <>
-                          <div className="flex items-start gap-2 p-3 bg-primary/5 border border-primary/15 rounded-md">
-                            <Icon name="ExternalLink" size={18} className="text-primary flex-shrink-0 mt-0.5" />
-                            <div className="text-sm">
-                              <p className="font-medium text-foreground">Paiement CB via Stripe (mode test)</p>
-                              <p className="text-muted-foreground mt-1">
-                                Redirection vers Stripe pour payer la location. La caution reste en empreinte CB non débitée.
-                              </p>
-                              <p className="text-xs text-muted-foreground mt-2">
-                                Exemple carte test Stripe: 4242 4242 4242 4242, date future, CVC libre.
-                              </p>
-                            </div>
-                          </div>
-
-                          <Button
-                            type="button"
-                            size="lg"
-                            fullWidth
-                            loading={loading}
-                            disabled={!acceptCGU || stripePaymentAlreadyConfirmed}
-                            onClick={handlePayment}
-                            className="bg-success hover:bg-success/90 text-success-foreground"
-                          >
-                            <Icon name={stripePaymentAlreadyConfirmed ? "CheckCircle2" : "Lock"} size={20} className="mr-2" />
-                            {stripePaymentAlreadyConfirmed
-                              ? 'Paiement déjà confirmé'
-                              : `Payer la location en CB (test) ${Number(computedBookingDetails?.chargedAmount || 0)?.toFixed(2)} EUR`}
-                          </Button>
-                        </>
+                        <Button
+                          type="button"
+                          size="md"
+                          fullWidth
+                          loading={loading}
+                          disabled={!acceptCGU || stripePaymentAlreadyConfirmed}
+                          onClick={handlePayment}
+                          className="bg-success hover:bg-success/90 text-success-foreground"
+                        >
+                          <Icon name={stripePaymentAlreadyConfirmed ? "CheckCircle2" : "Lock"} size={20} className="mr-2" />
+                          {stripePaymentAlreadyConfirmed
+                            ? 'Paiement déjà confirmé'
+                            : `Payer la location en CB (test) ${Number(computedBookingDetails?.chargedAmount || 0)?.toFixed(2)} EUR`}
+                        </Button>
                       ) : (
                         <div className="flex items-start gap-2 p-3 bg-warning/10 border border-warning/20 rounded-md">
                           <Icon name="AlertTriangle" size={18} className="text-warning flex-shrink-0 mt-0.5" />
                           <div className="text-sm">
-                            <p className="font-medium text-foreground">Paiement Stripe indisponible</p>
+                            <p className="font-medium text-foreground">Paiement indisponible</p>
                             <p className="text-muted-foreground mt-1">
-                              Configuration Stripe manquante sur cette instance.
+                              Le paiement n'est pas disponible pour le moment.
                             </p>
                           </div>
                         </div>
                       )}
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
             </div>
           </div>
-          </div>
         </div>
-      </main>
-
-      <Footer />
-    </div>
+      </div>
+    </ActionPageShell>
   );
 };
 

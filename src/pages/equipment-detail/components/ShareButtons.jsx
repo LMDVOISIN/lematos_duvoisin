@@ -4,16 +4,19 @@ import Icon from '../../../components/AppIcon';
 import {
   buildSocialShareUrl,
   downloadPromotionImage,
-  shareOnInstagram
+  shareOnTikTok
 } from '../../../services/socialPromotionService';
 import { trackAnalyticsEvent } from '../../../utils/analyticsTracking';
 import { openExternalWindow } from '../../../utils/nativeRuntime';
+import { isAdminVerificationScenario } from '../../../utils/adminVerificationContext';
 
 const ShareButtons = ({ title, description, url, imageUrl, itemId, itemCategory }) => {
   const [copied, setCopied] = useState(false);
-  const shareUrl = url || window?.location?.href || '';
-  const shareTitle = title || 'Decouvrez cette annonce';
-  const shareDescription = description || 'Le Matos du Voisin - Location de materiel entre particuliers';
+  const [verificationMessage, setVerificationMessage] = useState('');
+  const isVerificationShareScenario = isAdminVerificationScenario('public_listing_share');
+  const shareUrl = url || window.location.href || '';
+  const shareTitle = title || 'Découvrez cette annonce';
+  const shareDescription = description || 'Le Matos du Voisin - Location de matériel entre particuliers';
   const socialSharePayload = {
     title: shareTitle,
     description: shareDescription,
@@ -23,7 +26,14 @@ const ShareButtons = ({ title, description, url, imageUrl, itemId, itemCategory 
 
   const handleCopyLink = async () => {
     try {
-      await navigator?.clipboard?.writeText(shareUrl);
+      if (isVerificationShareScenario) {
+        setCopied(true);
+        setVerificationMessage('Lien de vérification copié.');
+        setTimeout(() => setCopied(false), 2000);
+        return;
+      }
+
+      await navigator.clipboard.writeText(shareUrl);
       trackAnalyticsEvent('share', {
         method: 'copy_link',
         content_type: 'listing',
@@ -33,17 +43,17 @@ const ShareButtons = ({ title, description, url, imageUrl, itemId, itemCategory 
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
-      console.error('Echec lors de la copie :', err);
+      console.error('Échec lors de la copie :', err);
     }
   };
 
   const shareLinks = [
     {
-      name: 'Instagram',
-      method: 'instagram',
-      icon: 'Instagram',
-      color: 'bg-[#E1306C] hover:bg-[#c1275c]',
-      url: buildSocialShareUrl('instagram', socialSharePayload)
+      name: 'TikTok',
+      method: 'tiktok',
+      icon: 'BrandTikTok',
+      color: 'bg-[#111111] hover:bg-[#000000]',
+      url: buildSocialShareUrl('tiktok', socialSharePayload)
     },
     {
       name: 'Facebook',
@@ -78,16 +88,16 @@ const ShareButtons = ({ title, description, url, imageUrl, itemId, itemCategory 
       method: 'whatsapp',
       icon: 'MessageCircle',
       color: 'bg-[#25D366] hover:bg-[#1fb855]',
-      url: `https://wa.me/?text=${encodeURIComponent(`${shareTitle} ${shareUrl}`)}`
+      url: `https://wa.me/text=${encodeURIComponent(`${shareTitle} ${shareUrl}`)}`
     },
     {
       name: 'E-mail',
       method: 'email',
       icon: 'Mail',
       color: 'bg-[#6B7280] hover:bg-[#4B5563]',
-      url: `mailto:?subject=${encodeURIComponent(shareTitle)}&body=${encodeURIComponent(`${shareDescription}\n\n${shareUrl}`)}`
+      url: `mailto:subject=${encodeURIComponent(shareTitle)}&body=${encodeURIComponent(`${shareDescription}\n\n${shareUrl}`)}`
     }
-  ].filter((target) => Boolean(target?.url));
+  ].filter((target) => Boolean(target.url));
 
   const handleShare = async (shareTargetUrl, method) => {
     trackAnalyticsEvent('share', {
@@ -97,18 +107,27 @@ const ShareButtons = ({ title, description, url, imageUrl, itemId, itemCategory 
       item_category: itemCategory || undefined
     });
 
-    if (method === 'instagram') {
-      const result = await shareOnInstagram(socialSharePayload);
+    if (isVerificationShareScenario) {
+      const simulatedMessage = method === 'tiktok'
+        ? 'Partage TikTok simulé.'
+        : `Partage ${method} simulé.`;
+      setVerificationMessage(simulatedMessage);
+      toast.success(simulatedMessage);
+      return;
+    }
 
-      if (result?.openedCount === 0) {
-        toast?.error("Le navigateur a bloque l'ouverture d'Instagram.");
+    if (method === 'tiktok') {
+      const result = await shareOnTikTok(socialSharePayload);
+
+      if (result.openedCount === 0) {
+        toast.error("Le navigateur a bloqué l'ouverture de TikTok.");
         return;
       }
 
-      if (result?.copiedText) {
-        toast?.success('Legende Instagram copiee. Collez-la ensuite dans votre publication.');
+      if (result.copiedText) {
+        toast.success('Légende TikTok copiée. Collez-la ensuite dans votre publication.');
       } else {
-        toast?.success("Instagram ouvert. Ajoutez maintenant votre visuel et le lien de l'annonce.");
+        toast.success("TikTok ouvert. Ajoutez maintenant votre visuel et le lien de l'annonce.");
       }
 
       return;
@@ -117,26 +136,32 @@ const ShareButtons = ({ title, description, url, imageUrl, itemId, itemCategory 
     await openExternalWindow(shareTargetUrl, '_blank', 'width=720,height=680');
   };
 
-  const handleDownloadInstagramVisual = async () => {
+  const handleDownloadTikTokVisual = async () => {
     if (!imageUrl) return;
 
     try {
+      if (isVerificationShareScenario) {
+        setVerificationMessage('Visuel TikTok prêt pour la vérification.');
+        toast.success('Visuel TikTok prêt pour la vérification.');
+        return;
+      }
+
       const result = await downloadPromotionImage(socialSharePayload);
 
-      if (result?.downloaded) {
-        toast?.success('Visuel Instagram telecharge.');
+      if (result.downloaded) {
+        toast.success('Visuel TikTok téléchargé.');
         return;
       }
 
-      if (result?.openedPreview) {
-        toast?.success("Visuel ouvert. Enregistrez-le ensuite depuis l'onglet.");
+      if (result.openedPreview) {
+        toast.success("Visuel ouvert. Enregistrez-le ensuite depuis l'onglet.");
         return;
       }
 
-      toast?.error('Impossible de recuperer le visuel pour le moment.');
+      toast.error('Impossible de récupérer le visuel pour le moment.');
     } catch (error) {
-      console.error('Telechargement visuel Instagram impossible :', error);
-      toast?.error(error?.message || 'Impossible de telecharger le visuel.');
+      console.error('Téléchargement du visuel TikTok impossible :', error);
+      toast.error(error.message || 'Impossible de télécharger le visuel.');
     }
   };
 
@@ -147,15 +172,15 @@ const ShareButtons = ({ title, description, url, imageUrl, itemId, itemCategory 
         Partager cette annonce
       </h3>
       <div className="flex flex-wrap gap-3">
-        {shareLinks?.map((social) => (
+        {shareLinks.map((social) => (
           <button
-            key={social?.name}
-            onClick={() => void handleShare(social?.url, social?.method)}
-            className={`${social?.color} text-white px-4 py-2.5 rounded-lg flex items-center gap-2 transition-all duration-200 hover:shadow-lg transform hover:-translate-y-0.5`}
-            title={`Partager sur ${social?.name}`}
+            key={social.name}
+            onClick={() => void handleShare(social.url, social.method)}
+            className={`${social.color} text-white px-4 py-2.5 rounded-lg flex items-center gap-2 transition-all duration-200 hover:shadow-lg transform hover:-translate-y-0.5`}
+            title={`Partager sur ${social.name}`}
           >
-            <Icon name={social?.icon} size={18} />
-            <span className="font-medium text-sm">{social?.name}</span>
+            <Icon name={social.icon} size={18} />
+            <span className="font-medium text-sm">{social.name}</span>
           </button>
         ))}
 
@@ -168,21 +193,26 @@ const ShareButtons = ({ title, description, url, imageUrl, itemId, itemCategory 
         >
           <Icon name={copied ? 'Check' : 'Link'} size={18} />
           <span className="font-medium text-sm">
-            {copied ? 'Lien copie !' : 'Copier le lien'}
+            {copied ? 'Lien copié !' : 'Copier le lien'}
           </span>
         </button>
 
         {imageUrl ? (
           <button
-            onClick={() => void handleDownloadInstagramVisual()}
+            onClick={() => void handleDownloadTikTokVisual()}
             className="bg-[#F3F4F6] hover:bg-[#E5E7EB] text-slate-800 px-4 py-2.5 rounded-lg flex items-center gap-2 transition-all duration-200 hover:shadow-lg transform hover:-translate-y-0.5"
-            title="Telecharger le visuel Instagram"
+            title="Télécharger le visuel TikTok"
           >
             <Icon name="Download" size={18} />
-            <span className="font-medium text-sm">Visuel Instagram</span>
+            <span className="font-medium text-sm">Visuel TikTok</span>
           </button>
         ) : null}
       </div>
+      {verificationMessage ? (
+        <p className="mt-4 text-sm font-medium text-success" data-testid="listing-share-status">
+          {verificationMessage}
+        </p>
+      ) : null}
     </div>
   );
 };

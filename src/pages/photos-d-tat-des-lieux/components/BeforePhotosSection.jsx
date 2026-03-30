@@ -62,7 +62,7 @@ const BeforePhotosSection = ({
           </div>
           <div>
             <h2 className="text-lg font-semibold text-foreground">Photos avant location</h2>
-            <p className="text-xs text-muted-foreground">Ajoutees par le propriétaire</p>
+            <p className="text-xs text-muted-foreground">Ajoutées par le propriétaire</p>
           </div>
         </div>
         <div className="px-2 py-1 bg-success/10 rounded-full text-xs font-medium text-success">
@@ -74,7 +74,7 @@ const BeforePhotosSection = ({
         <div className="flex items-start gap-2">
           <Icon name="ShieldCheck" size={16} className="text-[#17a2b8] mt-0.5" />
           <div className="flex-1">
-            <p className="text-sm font-medium text-foreground">Presence contradictoire requise (debut)</p>
+            <p className="text-sm font-medium text-foreground">Présence contradictoire requise (début)</p>
             <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
               <div className="flex items-center justify-between rounded border border-border bg-white px-2 py-1">
                 <span>{ownerLabel || 'Propriétaire'}</span>
@@ -91,13 +91,13 @@ const BeforePhotosSection = ({
               <div className="flex items-center justify-between rounded border border-border bg-white px-2 py-1">
                 <span>Finalisation propriétaire</span>
                 <span className={ownerPhotosFinalized ? 'text-success font-medium' : 'text-muted-foreground'}>
-                  {ownerPhotosFinalized ? 'Validee' : 'En attente'}
+                  {ownerPhotosFinalized ? 'Validée' : 'En attente'}
                 </span>
               </div>
               <div className="flex items-center justify-between rounded border border-border bg-white px-2 py-1">
                 <span>Finalisation locataire</span>
                 <span className={renterPhotosFinalized ? 'text-success font-medium' : 'text-muted-foreground'}>
-                  {renterPhotosFinalized ? 'Validee' : 'En attente'}
+                  {renterPhotosFinalized ? 'Validée' : 'En attente'}
                 </span>
               </div>
             </div>
@@ -113,7 +113,7 @@ const BeforePhotosSection = ({
                   disabled={confirmPresenceLoading}
                   className={highlightPresenceButton ? 'ring-2 ring-[#17a2b8] ring-offset-2 animate-pulse' : ''}
                 >
-                  {confirmPresenceLoading ? 'Confirmation...' : 'Confirmer ma presence'}
+                  {confirmPresenceLoading ? 'Confirmation...' : 'Confirmer ma présence'}
                 </Button>
               )}
               {!canConfirmPresence && currentUserHasConfirmedPresence && (

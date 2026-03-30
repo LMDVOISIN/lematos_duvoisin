@@ -39,8 +39,8 @@ const RejectDocumentModal = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[130] flex items-center justify-center bg-slate-950/60 px-4 py-6">
-      <div className="w-full max-w-xl rounded-3xl bg-white p-6 shadow-2xl">
+    <div className="modal-viewport z-[1070] bg-slate-950/60 px-4 py-6">
+      <div className="modal-card modal-card-auto max-w-xl rounded-3xl bg-white p-6 shadow-2xl">
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">

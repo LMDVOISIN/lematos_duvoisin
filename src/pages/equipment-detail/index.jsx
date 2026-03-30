@@ -33,15 +33,19 @@ import {
   normalizeScheduleWeekdays,
   rangeContainsBlockedDate
 } from '../../utils/availabilityRules';
+import { AVAILABILITY_HOLD_RESERVATION_STATUSES } from '../../utils/reservationStatus';
 import { formatTimeRange } from '../../utils/timeSlots';
+import { favoriteListings } from '../../utils/favoriteListings';
+import { isAdminVerificationScenario } from '../../utils/adminVerificationContext';
 
 const SITE_NAME = 'Le Matos Du Voisin';
 const DEFAULT_SOCIAL_IMAGE = '/assets/images/android-chrome-192x192-1771179342850.png';
 const DEFAULT_SOCIAL_IMAGE_WIDTH = 1200;
 const DEFAULT_SOCIAL_IMAGE_HEIGHT = 630;
 const DEFAULT_SEO_DESCRIPTION = 'Location de matériel entre voisins en toute sécurité.';
+const VERIFICATION_EQUIPMENT_ID = 'verification-offer';
 const LocationMap = React.lazy(() => import('./components/LocationMap'));
-const BLOCKING_STATUSES = new Set(['accepted', 'paid', 'active', 'ongoing']);
+const BLOCKING_STATUSES = AVAILABILITY_HOLD_RESERVATION_STATUSES;
 
 const expandReservationDates = (startDateValue, endDateValue) => {
   const startDate = new Date(startDateValue);
@@ -164,12 +168,66 @@ const construireDescriptionSeoAnnonce = (equipment = null) => {
   return tronquerTexte(parts?.join(' - '), 160) || DEFAULT_SEO_DESCRIPTION;
 };
 
+const buildVerificationEquipment = () => ({
+  id: VERIFICATION_EQUIPMENT_ID,
+  title: 'Annonce de verification admin',
+  description: 'Annonce de verification admin dediee aux controles end-to-end de la fiche annonce.',
+  category: 'Bricolage',
+  categorie: 'Bricolage',
+  city: 'Paris',
+  ville: 'Paris',
+  location: 'Paris',
+  dailyPrice: 19,
+  cautionAmount: 250,
+  reviewCount: 4,
+  rating: 4.8,
+  rules: [
+    'Retrait sur rendez-vous',
+    'Restitution dans le meme etat',
+    'Usage conforme uniquement'
+  ],
+  pickupDays: [1, 2, 3, 4, 5, 6],
+  returnDays: [1, 2, 3, 4, 5, 6],
+  pickupTimeStart: '09:00',
+  pickupTimeEnd: '18:00',
+  returnTimeStart: '09:00',
+  returnTimeEnd: '18:00',
+  unavailable_dates: [],
+  images: [
+    {
+      url: DEFAULT_SOCIAL_IMAGE,
+      alt: 'Visuel de verification admin',
+      width: DEFAULT_SOCIAL_IMAGE_WIDTH,
+      height: DEFAULT_SOCIAL_IMAGE_HEIGHT
+    }
+  ],
+  owner: {
+    id: 'verification-owner',
+    pseudonym: 'atelier_verification',
+    avatar: '/assets/images/no_image.png',
+    avatarAlt: 'Avatar de verification',
+    responseRate: 100,
+    responseTime: 'Moins d une heure',
+    reviewCount: 12,
+    rating: 4.9,
+    memberSince: '2025',
+    isVerified: true
+  }
+});
+
 const EquipmentDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
+  const isVerificationListingScenario = isAdminVerificationScenario(
+    'public_listing_share',
+    'partial_favorites',
+    'partial_reporting_front_only'
+  );
+  const isVerificationFavoritesScenario = isAdminVerificationScenario('partial_favorites');
   const [isFavorite, setIsFavorite] = useState(false);
+  const [verificationFavoriteStatus, setVerificationFavoriteStatus] = useState('');
   const [showReportModal, setShowReportModal] = useState(false);
   const [loading, setLoading] = useState(true);
   const [equipment, setEquipment] = useState(null);
@@ -190,6 +248,14 @@ const EquipmentDetail = () => {
 
       try {
         setLoading(true);
+
+        if (isVerificationListingScenario && String(id) === VERIFICATION_EQUIPMENT_ID) {
+          setEquipment(buildVerificationEquipment());
+          setError(null);
+          setLoading(false);
+          return;
+        }
+
         const [
           { data, error: fetchError },
           { data: reservationsData, error: reservationsError }
@@ -329,7 +395,7 @@ const EquipmentDetail = () => {
     };
 
     fetchAnnonce();
-  }, [id]);
+  }, [id, isVerificationListingScenario]);
 
   useEffect(() => {
     if (!equipment?.id) return;
@@ -341,11 +407,13 @@ const EquipmentDetail = () => {
       ville: equipment?.ville,
       city: equipment?.city
     });
+    const canonicalTarget = `${canonicalPath}${location?.search || ''}${location?.hash || ''}`;
+    const currentPath = `${location?.pathname || ''}${location?.search || ''}${location?.hash || ''}`;
 
-    if (location?.pathname !== canonicalPath) {
-      navigate(canonicalPath, { replace: true });
+    if (currentPath !== canonicalTarget) {
+      navigate(canonicalTarget, { replace: true });
     }
-  }, [equipment, location?.pathname, navigate]);
+  }, [equipment, location?.hash, location?.pathname, location?.search, navigate]);
 
   useEffect(() => {
     if (!equipment?.id) return;
@@ -407,8 +475,35 @@ const EquipmentDetail = () => {
     setSelectedEndDate(null);
   }, [equipment?.id]);
 
+  useEffect(() => {
+    if (!equipment?.id) {
+      setIsFavorite(false);
+      return undefined;
+    }
+
+    const syncFavoriteState = () => {
+      setIsFavorite(favoriteListings.isFavorite(equipment?.id));
+    };
+
+    syncFavoriteState();
+    window?.addEventListener?.('ldv:favorites-changed', syncFavoriteState);
+
+    return () => {
+      window?.removeEventListener?.('ldv:favorites-changed', syncFavoriteState);
+    };
+  }, [equipment?.id]);
+
   const handleFavoriteToggle = () => {
-    setIsFavorite(!isFavorite);
+    if (!equipment?.id) return;
+    const nextValue = favoriteListings.toggle(equipment?.id);
+    setIsFavorite(Boolean(nextValue));
+  };
+
+  const handleVerificationFavoriteSetup = () => {
+    if (!isVerificationFavoritesScenario || !equipment?.id) return;
+    favoriteListings.setFavorite(equipment?.id, true);
+    setIsFavorite(true);
+    setVerificationFavoriteStatus('Annonce enregistrée en favori pour la vérification.');
   };
 
   const handleContact = async () => {
@@ -457,16 +552,15 @@ const EquipmentDetail = () => {
       }
 
       const params = new URLSearchParams();
-      params?.set('tab', 'messages');
       if (conversation?.id) {
         params?.set('conversation', String(conversation?.id));
       }
 
-      navigate(`/tableau-bord-utilisateur?${params?.toString()}`);
+      navigate(`/messages${params?.toString() ? `?${params?.toString()}` : ''}`);
     } catch (contactError) {
       console.error('Erreur ouverture messagerie:', contactError);
       toast?.error("Impossible d'ouvrir la messagerie pour le moment");
-      navigate('/tableau-bord-utilisateur?tab=messages');
+      navigate('/messages');
     }
   };
 
@@ -828,7 +922,8 @@ const EquipmentDetail = () => {
                       variant="outline"
                       size="icon"
                       onClick={handleFavoriteToggle}
-                      aria-label={isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}>
+                      aria-label={isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}
+                      data-testid={`listing-detail-favorite-${equipment?.id || 'unknown'}`}>
                       
                         <Icon
                         name="Heart"
@@ -855,6 +950,21 @@ const EquipmentDetail = () => {
                     </div>
                   </div>
                 </div>
+
+                {isVerificationFavoritesScenario ? (
+                  <div className="mb-4 rounded-lg border border-green-200 bg-green-50 p-3">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <Button type="button" size="sm" onClick={handleVerificationFavoriteSetup}>
+                        Initialiser le favori de vérification
+                      </Button>
+                      {verificationFavoriteStatus ? (
+                        <span className="text-sm font-medium text-success" data-testid="verification-favorite-status">
+                          {verificationFavoriteStatus}
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : null}
 
                 {/* Share Buttons */}
                 <ShareButtons

@@ -3,10 +3,10 @@ import faqService from './faqService';
 import { LEGAL_PAGE_DEFINITIONS } from '../utils/legalPagesConfig';
 
 export const TECHNICAL_DISCLOSURE_REFUSAL_MESSAGE =
-  "Je peux uniquement repondre aux questions publiques sur l'utilisation de la plateforme. Je ne fournis pas d'informations sur sa fabrication technique ou son fonctionnement interne.";
+  "Je peux surtout t'aider sur l'utilisation publique de la plateforme, comme les annonces, réservations, paiements et règles visibles. Pour les sujets techniques ou internes, je n'ai rien de public à partager.";
 
 export const PUBLIC_INFO_UNAVAILABLE_MESSAGE =
-  "Je n'ai pas trouve d'information publique correspondante dans la FAQ ou les pages legales de la plateforme.";
+  "Je n'ai rien trouve de vraiment clair dans les infos publiques. Si tu veux, reformule ta question et je regarde ca autrement.";
 
 const FAQ_ROUTE = '/foire-questions';
 const MAX_CONTEXT_SOURCES = 4;
@@ -219,15 +219,15 @@ export function getInstantPublicReply(question = '') {
   if (!normalizedQuestion) return null;
 
   if (/\b(?:bonjour|bonsoir|salut|hello)\b/.test(normalizedQuestion)) {
-    return "Bonjour. Je peux vous aider sur les reservations, paiements, annonces et regles publiques de la plateforme.";
+    return "Salut. Je peux t'aider sur les annonces, réservations, paiements et règles publiques de la plateforme.";
   }
 
   if (/\b(?:merci|merci beaucoup)\b/.test(normalizedQuestion)) {
-    return "Je vous en prie. Si besoin, posez votre question sur les regles ou parcours publics de la plateforme.";
+    return "Avec plaisir. Si tu veux, tu peux aussi me poser une question sur les règles ou parcours publics de la plateforme.";
   }
 
   if (/\b(?:aide|aidez moi|besoin d aide)\b/.test(normalizedQuestion)) {
-    return "Posez votre question sur une reservation, un paiement, une annonce, la moderation ou les conditions publiques de la plateforme.";
+    return "Bien sûr. Dis-moi ce que tu veux savoir sur une réservation, un paiement, une annonce, la modération ou les conditions publiques de la plateforme.";
   }
 
   return null;
@@ -241,7 +241,7 @@ export function buildSourceFallbackReply(sources = []) {
 
   const primarySource = relevantSources[0];
   const secondarySource = relevantSources[1];
-  let reply = `Selon les informations publiques disponibles, ${primarySource.excerpt}`;
+  let reply = `Voila ce que j'ai trouve dans les infos publiques : ${primarySource.excerpt}`;
 
   if (secondarySource?.excerpt && secondarySource.excerpt !== primarySource.excerpt) {
     reply += `\n\nAutre point utile : ${secondarySource.excerpt}`;

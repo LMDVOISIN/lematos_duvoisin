@@ -142,6 +142,36 @@
 }
 
 @layer components {
+  .modal-viewport {
+    @apply fixed inset-0 flex justify-center overflow-y-auto p-4;
+    align-items: flex-start;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .modal-card {
+    width: 100%;
+    max-height: min(92vh, calc(100dvh - 2rem));
+  }
+
+  .modal-card-auto {
+    @apply overflow-y-auto;
+  }
+
+  .modal-card-shell {
+    @apply flex flex-col overflow-hidden;
+  }
+
+  .modal-card-body {
+    @apply min-h-0 overflow-y-auto;
+  }
+
+  @media (min-width: 768px) and (min-height: 640px) {
+    .modal-viewport {
+      align-items: center;
+    }
+  }
+
   .header-container {
     @apply fixed top-0 left-0 right-0 z-[1000] border-b border-white/50 backdrop-blur-xl;
     background: linear-gradient(120deg, rgba(242, 248, 255, 0.95) 0%, rgba(227, 243, 255, 0.95) 55%, rgba(214, 236, 252, 0.9) 100%);
@@ -402,10 +432,30 @@
     bottom: calc(env(safe-area-inset-bottom, 0px) + 5.75rem);
   }
 
+  .fab-mobile-safe-primary {
+    right: 0.75rem;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 5.75rem);
+  }
+
+  .fab-mobile-safe-secondary {
+    right: 0.75rem;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 10.75rem);
+  }
+
   @media (min-width: 640px) {
     .fab-mobile-safe {
       right: 1.5rem;
       bottom: 1.5rem;
+    }
+
+    .fab-mobile-safe-primary {
+      right: 1.5rem;
+      bottom: 1.5rem;
+    }
+
+    .fab-mobile-safe-secondary {
+      right: 1.5rem;
+      bottom: 6rem;
     }
   }
 }

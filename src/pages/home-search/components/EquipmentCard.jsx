@@ -1,9 +1,10 @@
-﻿import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Button from '../../../components/ui/Button';
 import Icon from '../../../components/AppIcon';
 import { construireUrlAnnonce } from '../../../utils/listingUrl';
 import { buildListingAnalyticsItem, trackAnalyticsEvent } from '../../../utils/analyticsTracking';
+import { favoriteListings } from '../../../utils/favoriteListings';
 
 const SUPABASE_PUBLIC_OBJECT_SEGMENT = '/storage/v1/object/public/';
 const SUPABASE_RENDER_IMAGE_SEGMENT = '/storage/v1/render/image/public/';
@@ -35,9 +36,11 @@ const buildOptimizedSupabaseImageUrl = (url, options = {}) => {
   }
 };
 
-const EquipmentCard = ({ equipment, userLocation }) => {
+const EquipmentCard = ({ equipment }) => {
   const navigate = useNavigate();
-  const [isFavorite, setIsFavorite] = useState(equipment?.isFavorite || false);
+  const [isFavorite, setIsFavorite] = useState(
+    equipment?.id ? favoriteListings.isFavorite(equipment?.id) : Boolean(equipment?.isFavorite)
+  );
   const analyticsItem = buildListingAnalyticsItem(equipment);
   const rawImageUrl = equipment?.image || equipment?.photos?.[0] || '/assets/images/no_image.png';
   const fallbackImageUrl = '/assets/images/no_image.png';
@@ -60,6 +63,23 @@ const EquipmentCard = ({ equipment, userLocation }) => {
   const ownerRating = Number(equipment?.ownerRating ?? equipment?.owner?.rating);
   const hasOwnerRating = ownerReviewCount > 0 && Number.isFinite(ownerRating);
 
+  useEffect(() => {
+    const syncFavoriteState = () => {
+      setIsFavorite(
+        equipment?.id
+          ? favoriteListings.isFavorite(equipment?.id)
+          : Boolean(equipment?.isFavorite)
+      );
+    };
+
+    syncFavoriteState();
+    window?.addEventListener?.('ldv:favorites-changed', syncFavoriteState);
+
+    return () => {
+      window?.removeEventListener?.('ldv:favorites-changed', syncFavoriteState);
+    };
+  }, [equipment?.id, equipment?.isFavorite]);
+
   const handleOpenDetails = () => {
     if (!equipment?.id) return;
     trackAnalyticsEvent('select_item', {
@@ -72,7 +92,13 @@ const EquipmentCard = ({ equipment, userLocation }) => {
 
   const handleToggleFavorite = (event) => {
     event?.stopPropagation();
-    setIsFavorite(!isFavorite);
+    if (!equipment?.id) {
+      setIsFavorite(!isFavorite);
+      return;
+    }
+
+    const nextValue = favoriteListings.toggle(equipment?.id);
+    setIsFavorite(Boolean(nextValue));
   };
 
   const handleBooking = (event) => {
@@ -96,29 +122,28 @@ const EquipmentCard = ({ equipment, userLocation }) => {
 
   return (
     <div
-      className="bg-white rounded-lg border border-border overflow-hidden hover:shadow-elevation-2 transition-shadow group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+      className="group cursor-pointer overflow-hidden rounded-lg border border-border bg-white transition-shadow hover:shadow-elevation-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
       onClick={handleOpenDetails}
       onKeyDown={handleCardKeyDown}
       role="button"
       tabIndex={0}
       aria-label={`Voir l'annonce ${equipment?.title || equipment?.titre || ''}`}
     >
-      {/* Image */}
       <div className="relative aspect-[4/3] overflow-hidden">
         <img
           src={imageSrc640 || rawImageUrl}
           srcSet={imageSrcSet}
           sizes="(min-width: 1280px) 22vw, (min-width: 1024px) 28vw, (min-width: 768px) 44vw, 94vw"
           alt={equipment?.imageAlt || equipment?.titre || "Image de l'annonce"}
-          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+          className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
           loading="lazy"
           decoding="async"
           fetchPriority="low"
-          onError={(e) => {
-            e.target.onerror = null;
-            e.target.src = fallbackImageUrl;
-            if (e.target.srcset !== undefined) {
-              e.target.srcset = '';
+          onError={(event) => {
+            event.target.onerror = null;
+            event.target.src = fallbackImageUrl;
+            if (event.target.srcset !== undefined) {
+              event.target.srcset = '';
             }
           }}
         />
@@ -127,20 +152,20 @@ const EquipmentCard = ({ equipment, userLocation }) => {
           <span className="inline-flex items-center rounded-full bg-[#1d4ed8] px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white">
             Offre
           </span>
-          {equipment?.distanceText && (
+          {equipment?.distanceText ? (
             <span className="inline-flex items-center gap-1 rounded-full bg-primary px-3 py-1 text-xs font-medium text-white">
               <Icon name="MapPin" size={12} />
               {equipment?.distanceText}
             </span>
-          )}
+          ) : null}
         </div>
 
-        {/* Favorite Button */}
         <button
           type="button"
           onClick={handleToggleFavorite}
-          className="absolute top-3 right-3 p-2 bg-white/90 hover:bg-white rounded-full transition-colors"
+          className="absolute right-3 top-3 rounded-full bg-white/90 p-2 transition-colors hover:bg-white"
           aria-label={isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}
+          data-testid={`listing-card-favorite-${equipment?.id || 'unknown'}`}
         >
           <Icon
             name="Heart"
@@ -149,62 +174,58 @@ const EquipmentCard = ({ equipment, userLocation }) => {
           />
         </button>
 
-        {/* Availability Badge */}
-        {equipment?.availability === 'limited' && (
-          <div className="absolute bottom-3 left-3 bg-warning text-warning-foreground px-3 py-1 rounded-full text-xs font-medium">
+        {equipment?.availability === 'limited' ? (
+          <div className="absolute bottom-3 left-3 rounded-full bg-warning px-3 py-1 text-xs font-medium text-warning-foreground">
             Disponibilité limitée
           </div>
-        )}
+        ) : null}
       </div>
 
-      {/* Content */}
       <div className="p-4">
-        {/* Title */}
-        <h3 className="font-semibold text-foreground mb-2 line-clamp-2 group-hover:text-primary transition-colors">
+        <h3 className="mb-2 line-clamp-2 font-semibold text-foreground transition-colors group-hover:text-primary">
           {equipment?.title || equipment?.titre}
         </h3>
 
-        {/* Location */}
-        <div className="flex items-center gap-1 text-sm text-muted-foreground mb-3">
+        <div className="mb-3 flex items-center gap-1 text-sm text-muted-foreground">
           <Icon name="MapPin" size={14} />
           <span>{equipment?.location || equipment?.ville}</span>
         </div>
 
-        {/* Rating */}
-        {hasListingRating && (
-          <div className="flex items-center gap-2 mb-3">
+        {hasListingRating ? (
+          <div className="mb-3 flex items-center gap-2">
             <div className="flex items-center gap-1">
               <Icon name="Star" size={14} className="fill-warning text-warning" />
               <span className="text-sm font-medium text-foreground">{equipment?.rating}</span>
             </div>
             <span className="text-xs text-muted-foreground">({listingReviewCount} avis)</span>
           </div>
-        )}
+        ) : null}
 
-        {/* Propriétaire */}
-        <div className="flex items-center gap-2 mb-3 pb-3 border-b border-border">
+        <div className="mb-3 flex items-center gap-2 border-b border-border pb-3">
           {equipment?.ownerAvatarUrl ? (
             <img
               src={equipment?.ownerAvatarUrl}
               alt={equipment?.ownerPseudonym}
-              className="w-8 h-8 rounded-full object-cover"
+              className="h-8 w-8 rounded-full object-cover"
               loading="lazy"
               decoding="async"
-              onError={(e) => {
-                e.target.onerror = null;
-                e.target.style.display = 'none';
-                e.target.nextSibling.style.display = 'flex';
+              onError={(event) => {
+                event.target.onerror = null;
+                event.target.style.display = 'none';
+                event.target.nextSibling.style.display = 'flex';
               }}
             />
           ) : null}
           <div
-            className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-medium text-primary"
+            className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-xs font-medium text-primary"
             style={{ display: equipment?.ownerAvatarUrl ? 'none' : 'flex' }}
           >
             {equipment?.ownerInitials || 'AN'}
           </div>
           <div className="min-w-0">
-            <span className="block text-sm text-muted-foreground truncate">{equipment?.ownerPseudonym || 'Propriétaire'}</span>
+            <span className="block truncate text-sm text-muted-foreground">
+              {equipment?.ownerPseudonym || 'Propriétaire'}
+            </span>
             {hasOwnerRating ? (
               <span className="flex items-center gap-1 text-xs text-muted-foreground">
                 <Icon name="Star" size={12} className="fill-warning text-warning" />
@@ -215,7 +236,6 @@ const EquipmentCard = ({ equipment, userLocation }) => {
           </div>
         </div>
 
-        {/* Price */}
         <div className="flex items-center justify-between">
           <div>
             <span className="text-2xl font-bold text-foreground">
@@ -233,4 +253,3 @@ const EquipmentCard = ({ equipment, userLocation }) => {
 };
 
 export default EquipmentCard;
-

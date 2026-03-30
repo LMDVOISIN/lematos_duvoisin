@@ -1,7 +1,7 @@
 ﻿import { supabase } from '../lib/supabase';
 
 const DEFAULT_ATTESTATION =
-  "Je certifie etre physiquement present avec l'autre partie au moment de la prise des photos. Toute fausse declaration engage ma responsabilite.";
+  "Je certifie être physiquement présent avec l'autre partie au moment de la prise des photos. Toute fausse déclaration engage ma responsabilité.";
 
 function isSchemaError(error) {
   if (!error) return false;

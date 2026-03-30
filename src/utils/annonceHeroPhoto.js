@@ -48,7 +48,7 @@ const buildLocationLabel = ({ city, postalCode }) => {
     .filter(Boolean)
     .join(' ');
 
-  return label || 'Localisation a confirmer';
+  return label || 'Localisation à confirmer';
 };
 
 const extractExtensionFromType = (mimeType) => {
@@ -289,7 +289,7 @@ const canvasToBlob = (canvas, type, quality) =>
         return;
       }
 
-      reject(new Error("Impossible de convertir l'image filigranee en fichier."));
+      reject(new Error("Impossible de convertir l'image filigranée en fichier."));
     }, type, quality);
   });
 
@@ -353,7 +353,7 @@ export const buildBrandedAnnonceHeroFile = async ({
 }) => {
   const photoSource = resolvePhotoSource(photo);
   if (!photoSource?.src) {
-    throw new Error("Aucune photo source disponible pour generer le visuel principal.");
+    throw new Error("Aucune photo source disponible pour générer le visuel principal.");
   }
 
   try {
@@ -378,7 +378,7 @@ export const buildBrandedAnnonceHeroFile = async ({
 
     const ctx = canvas.getContext('2d');
     if (!ctx) {
-      throw new Error("Contexte canvas indisponible pour la generation de l'image.");
+      throw new Error("Contexte canvas indisponible pour la génération de l'image.");
     }
 
     ctx.imageSmoothingEnabled = true;
@@ -426,8 +426,8 @@ export const buildBrandedAnnonceHeroFile = async ({
     const pillHeight = pillFontSize + pillPaddingY * 2;
     const pillWidth = ctx.measureText(pillLabel).width + pillPaddingX * 2;
     const pillRadius = pillHeight / 2;
-    const cityLabel = normalizeWhitespace(city) || 'Ville non renseignee';
-    const postalLabel = normalizeWhitespace(postalCode) || 'Code postal non renseigne';
+    const cityLabel = normalizeWhitespace(city) || 'Ville non renseignée';
+    const postalLabel = normalizeWhitespace(postalCode) || 'Code postal non renseigné';
     const cityMaxWidth = Math.max(1, leftPanelWidth - panelPaddingX * 1.5);
     const cityFontSize = fitSingleLineFont({
       ctx,

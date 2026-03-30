@@ -3,7 +3,9 @@ import { construireUrlAnnonceAbsolue } from '../utils/listingUrl';
 
 const DEFAULT_SITE_ORIGIN = 'https://www.lematosduvoisin.fr';
 const INSTAGRAM_HOME_URL = 'https://www.instagram.com/';
+const TIKTOK_UPLOAD_URL = 'https://www.tiktok.com/upload?lang=fr';
 const INSTAGRAM_HASHTAGS = ['#Location', '#EntreVoisins', '#LeMatosDuVoisin'];
+const TIKTOK_HASHTAGS = ['#Location', '#EntreVoisins', '#LeMatosDuVoisin'];
 
 const SOCIAL_PROMOTION_NETWORKS = Object.freeze([
   {
@@ -204,6 +206,30 @@ const resolvePromotionImageReference = (annonce = {}) => {
   return null;
 };
 
+const resolvePromotionShareCacheKey = (annonce = {}) => {
+  const candidates = [
+    annonce?.share_cache_key,
+    annonce?.shareCacheKey,
+    annonce?.cache_key,
+    annonce?.cacheKey,
+    annonce?.seo_refreshed_at,
+    annonce?.seoRefreshedAt,
+    annonce?.updated_at,
+    annonce?.updatedAt,
+    annonce?.published_at,
+    annonce?.publishedAt,
+    resolvePromotionImageReference(annonce),
+    annonce?.annonce_id,
+    annonce?.id
+  ];
+
+  const rawCandidate = candidates.find((value) => String(value || '').trim());
+  if (!rawCandidate) return '';
+
+  const normalizedKey = sanitizeFileName(String(rawCandidate || '').slice(-120));
+  return normalizedKey || '';
+};
+
 export const resolvePromotionImageUrl = (annonce = {}, origin = '') => {
   const imageReference = resolvePromotionImageReference(annonce);
   if (!imageReference) return '';
@@ -229,7 +255,8 @@ export const buildPromotionSharePayload = (annonce = {}, origin = '') => {
     title: resolvePromotionTitle(annonce),
     description: resolvePromotionDescription(annonce),
     url: shareUrl,
-    imageUrl: resolvePromotionImageUrl(annonce, origin)
+    imageUrl: resolvePromotionImageUrl(annonce, origin),
+    cacheKey: resolvePromotionShareCacheKey(annonce)
   };
 };
 
@@ -253,6 +280,26 @@ const buildInstagramCaptionLines = (payload = {}) => {
 
 export const buildInstagramShareText = (payload = {}) => {
   return buildInstagramCaptionLines(payload).join('\n\n');
+};
+
+const buildTikTokCaptionLines = (payload = {}) => {
+  const shareTitle = String(payload?.title || '').trim();
+  const shareDescription = String(payload?.description || '').trim();
+  const shareUrl = String(payload?.url || '').trim();
+  const descriptionSnippet = shareDescription
+    ? shareDescription.replace(/\s+/g, ' ').trim().slice(0, 120)
+    : '';
+
+  return [
+    shareTitle ? `A louer : ${shareTitle}` : '',
+    descriptionSnippet,
+    shareUrl ? `Lien annonce : ${shareUrl}` : '',
+    TIKTOK_HASHTAGS.join(' ')
+  ].filter(Boolean);
+};
+
+export const buildTikTokShareText = (payload = {}) => {
+  return buildTikTokCaptionLines(payload).join('\n\n');
 };
 
 export const downloadPromotionImage = async (payload = {}) => {
@@ -310,23 +357,45 @@ export const shareOnInstagram = async (payload = {}) => {
   };
 };
 
+export const shareOnTikTok = async (payload = {}) => {
+  const shareText = buildTikTokShareText(payload);
+  const copiedText = shareText ? await copyTextToClipboard(shareText) : false;
+  const openedTikTok = openPopupWindow(TIKTOK_UPLOAD_URL);
+
+  return {
+    total: 1,
+    openedCount: openedTikTok ? 1 : 0,
+    blockedCount: openedTikTok ? 0 : 1,
+    openedNetworkIds: openedTikTok ? ['tiktok'] : [],
+    blockedNetworkIds: openedTikTok ? [] : ['tiktok'],
+    copiedText,
+    shareText
+  };
+};
+
 export const buildSocialShareUrl = (networkId, payload = {}) => {
   const shareUrl = String(payload?.url || '').trim();
   const shareTitle = String(payload?.title || '').trim();
   const shareDescription = String(payload?.description || payload?.title || '').trim();
   const shareImageUrl = String(payload?.imageUrl || '').trim();
+  const shareCacheKey = resolvePromotionShareCacheKey(payload);
+  const cacheAwareShareUrl = shareCacheKey
+    ? appendQueryParams(shareUrl, { ldv_share: shareCacheKey })
+    : shareUrl;
 
   if (!shareUrl) return '';
 
   switch (String(networkId || '').toLowerCase()) {
     case 'facebook':
-      return `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`;
+      return `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(cacheAwareShareUrl)}`;
     case 'instagram':
       return INSTAGRAM_HOME_URL;
+    case 'tiktok':
+      return TIKTOK_UPLOAD_URL;
     case 'x':
-      return `https://twitter.com/intent/tweet?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(shareTitle)}`;
+      return `https://twitter.com/intent/tweet?url=${encodeURIComponent(cacheAwareShareUrl)}&text=${encodeURIComponent(shareTitle)}`;
     case 'linkedin': {
-      const linkedinShareUrl = appendQueryParams(shareUrl, {
+      const linkedinShareUrl = appendQueryParams(cacheAwareShareUrl, {
         utm_source: 'linkedin',
         utm_medium: 'social',
         utm_campaign: 'listing_promotion',
@@ -335,7 +404,7 @@ export const buildSocialShareUrl = (networkId, payload = {}) => {
       return `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(linkedinShareUrl)}`;
     }
     case 'pinterest': {
-      const params = new URLSearchParams({ url: shareUrl });
+      const params = new URLSearchParams({ url: cacheAwareShareUrl });
       if (shareImageUrl) params.set('media', shareImageUrl);
       if (shareDescription) params.set('description', shareDescription);
       return `https://www.pinterest.com/pin/create/button/?${params.toString()}`;
@@ -383,6 +452,7 @@ export const openSocialShareWindows = (networkIds = [], payload = {}) => {
 
 const socialPromotionService = {
   buildInstagramShareText,
+  buildTikTokShareText,
   buildPromotionSharePayload,
   buildSelectedSocialShareUrls,
   buildSocialShareUrl,
@@ -390,7 +460,8 @@ const socialPromotionService = {
   getSocialPromotionNetworks,
   openSocialShareWindows,
   resolvePromotionImageUrl,
-  shareOnInstagram
+  shareOnInstagram,
+  shareOnTikTok
 };
 
 export default socialPromotionService;

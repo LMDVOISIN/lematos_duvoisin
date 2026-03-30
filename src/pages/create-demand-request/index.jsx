@@ -1,39 +1,89 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Sparkles } from 'lucide-react';
 import toast from 'react-hot-toast';
-import Header from '../../components/navigation/Header';
-import Footer from '../../components/Footer';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
+import CommuneAutocompleteFields from '../../components/ui/CommuneAutocompleteFields';
 import Select from '../../components/ui/Select';
 import Icon from '../../components/AppIcon';
+import {
+  ActionCard,
+  ActionHero,
+  ActionPageShell
+} from '../../components/page/ActionPageLayout';
 import { useChat } from '../../hooks/useChat';
 import demandeService from '../../services/demandeService';
 import categoryService from '../../services/categoryService';
+import objectImageLibraryService from '../../services/objectImageLibraryService';
+import { normalizePostalCode } from '../../services/communeAutocompleteService';
 import { useAuth } from '../../contexts/AuthContext';
 import StyleSelectorModal from '../create-listing/components/StyleSelectorModal';
 import GeneratedOptionsModal from '../create-listing/components/GeneratedOptionsModal';
 import { getBestKnownCity, getStoredCity, setStoredCity } from '../../utils/cityPrefill';
 import {
-  LISTING_CATEGORY_OPTIONS,
   buildListingCategoryOptions,
   normalizeListingCategory
 } from '../create-listing/constants/categoryOptions';
 
 const DEMAND_DRAFT_STORAGE_KEY = 'createDemandDraft';
+const DEFAULT_RAYON_KM = 10;
+
+const createEmptyFormData = () => ({
+  titre: '',
+  description: '',
+  categorie_slug: '',
+  library_image_id: null,
+  code_postal: '',
+  ville: getStoredCity(),
+  rayon_km: DEFAULT_RAYON_KM
+});
+
+const sanitizeDemandDraft = (draft = {}) => {
+  const defaults = createEmptyFormData();
+  const parsedRadius = Number.parseInt(draft?.rayon_km, 10);
+
+  return {
+    ...defaults,
+    titre: String(draft?.titre || ''),
+    description: String(draft?.description || ''),
+    categorie_slug: String(draft?.categorie_slug || ''),
+    library_image_id: draft?.library_image_id ? Number.parseInt(draft?.library_image_id, 10) || null : null,
+    code_postal: normalizePostalCode(draft?.code_postal || draft?.postal_code),
+    ville: String(draft?.ville || draft?.city || defaults?.ville || '').trim(),
+    rayon_km: Number.isFinite(parsedRadius) ? parsedRadius : DEFAULT_RAYON_KM
+  };
+};
+
+const buildSubmitPayload = (formData = {}) => {
+  const parsedRadius = Number.parseInt(formData?.rayon_km, 10);
+
+  return {
+    titre: String(formData?.titre || '').trim(),
+    description: String(formData?.description || '').trim(),
+    categorie_slug: String(formData?.categorie_slug || '').trim(),
+    library_image_id: formData?.library_image_id ? Number.parseInt(formData?.library_image_id, 10) || null : null,
+    code_postal: normalizePostalCode(formData?.code_postal),
+    ville: String(formData?.ville || '').trim(),
+    rayon_km: Number.isFinite(parsedRadius) ? parsedRadius : DEFAULT_RAYON_KM
+  };
+};
 
 const CreateDemandRequest = () => {
   const navigate = useNavigate();
   const { user, userProfile } = useAuth();
   const [loading, setLoading] = useState(false);
   const [categories, setCategories] = useState([]);
+  const [libraryImages, setLibraryImages] = useState([]);
+  const [libraryImagesLoading, setLibraryImagesLoading] = useState(false);
+  const [librarySubcategoryFilter, setLibrarySubcategoryFilter] = useState('');
   const [errors, setErrors] = useState({});
   const [styleSelectorOpen, setStyleSelectorOpen] = useState(false);
   const [generatedOptionsOpen, setGeneratedOptionsOpen] = useState(false);
   const [currentFieldType, setCurrentFieldType] = useState(null);
   const [selectedStyle, setSelectedStyle] = useState(null);
   const [generatedOptions, setGeneratedOptions] = useState(null);
+  const [formData, setFormData] = useState(createEmptyFormData);
 
   const {
     response: generatedResponse,
@@ -41,17 +91,6 @@ const CreateDemandRequest = () => {
     error: generationError,
     sendMessage
   } = useChat('GEMINI', 'gemini/gemini-2.5-flash', false);
-
-  const [formData, setFormData] = useState(() => ({
-    titre: '',
-    description: '',
-    categorie_slug: '',
-    ville: getStoredCity(),
-    rayon_km: 10,
-    prix_max: '',
-    dispo_de: '',
-    dispo_a: ''
-  }));
 
   useEffect(() => {
     loadCategories();
@@ -63,10 +102,7 @@ const CreateDemandRequest = () => {
       const parsedDraft = JSON.parse(rawDraft);
       if (!parsedDraft || typeof parsedDraft !== 'object') return;
 
-      setFormData((previous) => ({
-        ...previous,
-        ...parsedDraft
-      }));
+      setFormData(sanitizeDemandDraft(parsedDraft));
     } catch (error) {
       console.warn('Impossible de restaurer le brouillon de demande:', error);
     }
@@ -75,7 +111,7 @@ const CreateDemandRequest = () => {
   useEffect(() => {
     if (!generationError) return;
 
-    toast?.error(generationError?.message || 'Erreur lors de la génération');
+    toast?.error(generationError?.message || 'Erreur lors de la generation');
     setGeneratedOptionsOpen(false);
   }, [generationError]);
 
@@ -98,15 +134,32 @@ const CreateDemandRequest = () => {
   }, [generatedResponse, isGenerating, selectedStyle, currentFieldType]);
 
   useEffect(() => {
-    const preferredCity = getBestKnownCity(formData?.ville, userProfile?.city, getStoredCity());
-    if (!preferredCity || preferredCity === formData?.ville) return;
+    const preferredCity = getBestKnownCity(userProfile?.city, getStoredCity());
+    const preferredPostalCode = normalizePostalCode(userProfile?.postal_code);
 
-    setFormData((prev) => ({
-      ...prev,
-      ville: preferredCity
-    }));
-    setStoredCity(preferredCity);
-  }, [userProfile?.city]);
+    if (!preferredCity && !preferredPostalCode) return;
+
+    setFormData((prev) => {
+      let hasChanges = false;
+      const next = { ...prev };
+
+      if (!prev?.ville && preferredCity) {
+        next.ville = preferredCity;
+        hasChanges = true;
+      }
+
+      if (!prev?.code_postal && preferredPostalCode) {
+        next.code_postal = preferredPostalCode;
+        hasChanges = true;
+      }
+
+      return hasChanges ? next : prev;
+    });
+
+    if (preferredCity) {
+      setStoredCity(preferredCity);
+    }
+  }, [userProfile?.city, userProfile?.postal_code]);
 
   const loadCategories = async () => {
     try {
@@ -115,7 +168,7 @@ const CreateDemandRequest = () => {
         setCategories(data);
       }
     } catch (error) {
-      console.error('Erreur lors du chargement des catégories :', error);
+      console.error('Erreur lors du chargement des categories :', error);
     }
   };
 
@@ -123,8 +176,37 @@ const CreateDemandRequest = () => {
     return buildListingCategoryOptions(categories || []);
   }, [categories]);
 
+  const selectedCategory = useMemo(() => {
+    const currentSlug = String(formData?.categorie_slug || '').trim();
+    if (!currentSlug) return null;
+
+    return (categories || []).find((category) => String(category?.slug || '').trim() === currentSlug) || null;
+  }, [categories, formData?.categorie_slug]);
+
+  const librarySubcategoryOptions = useMemo(() => {
+    const rows = selectedCategory?.subcategories || [];
+    return rows.map((subcategory) => ({
+      value: String(subcategory?.id || ''),
+      label: subcategory?.nom || subcategory?.name || subcategory?.slug || 'Sous-categorie'
+    }));
+  }, [selectedCategory]);
+
+  const filteredLibraryImages = useMemo(() => {
+    if (!librarySubcategoryFilter) return libraryImages || [];
+
+    return (libraryImages || []).filter((image) =>
+      String(image?.subcategory_id || '') === String(librarySubcategoryFilter || '')
+    );
+  }, [libraryImages, librarySubcategoryFilter]);
+
+  const selectedLibraryImage = useMemo(() => {
+    return (libraryImages || []).find((image) =>
+      String(image?.id || '') === String(formData?.library_image_id || '')
+    ) || null;
+  }, [formData?.library_image_id, libraryImages]);
+
   useEffect(() => {
-    const current = String(formData?.categorie_slug || '')?.trim();
+    const current = String(formData?.categorie_slug || '').trim();
     if (!current || categoryOptions?.length === 0) return;
 
     const normalized = normalizeListingCategory(current, categoryOptions);
@@ -136,11 +218,58 @@ const CreateDemandRequest = () => {
     }));
   }, [formData?.categorie_slug, categoryOptions]);
 
+  useEffect(() => {
+    const loadLibraryImages = async () => {
+      if (!selectedCategory?.id) {
+        setLibraryImages([]);
+        setLibrarySubcategoryFilter('');
+        return;
+      }
+
+      try {
+        setLibraryImagesLoading(true);
+        const { data, error } = await objectImageLibraryService?.listImages({
+          categoryId: selectedCategory?.id
+        });
+
+        if (error) {
+          console.error("Erreur lors du chargement des images de bibliothèque :", error);
+          setLibraryImages([]);
+          return;
+        }
+
+        setLibraryImages(data || []);
+      } catch (error) {
+        console.error("Erreur lors du chargement des images de bibliothèque :", error);
+        setLibraryImages([]);
+      } finally {
+        setLibraryImagesLoading(false);
+      }
+    };
+
+    void loadLibraryImages();
+  }, [selectedCategory?.id]);
+
   const handleChange = (field, value) => {
-    setFormData((prev) => ({ ...prev, [field]: value }));
+    const nextValue = field === 'code_postal' ? normalizePostalCode(value) : value;
+
+    if (field === 'categorie_slug') {
+      setFormData((prev) => ({
+        ...prev,
+        categorie_slug: nextValue,
+        library_image_id: null
+      }));
+      setLibrarySubcategoryFilter('');
+      if (errors?.[field]) {
+        setErrors((prev) => ({ ...prev, [field]: '' }));
+      }
+      return;
+    }
+
+    setFormData((prev) => ({ ...prev, [field]: nextValue }));
 
     if (field === 'ville') {
-      setStoredCity(value);
+      setStoredCity(nextValue);
     }
 
     if (errors?.[field]) {
@@ -160,27 +289,17 @@ const CreateDemandRequest = () => {
     }
 
     if (!normalizeListingCategory(formData?.categorie_slug, categoryOptions)) {
-      newErrors.categorie_slug = 'La catégorie est requise';
+      newErrors.categorie_slug = 'La categorie est requise';
+    }
+
+    if (!normalizePostalCode(formData?.code_postal)) {
+      newErrors.code_postal = 'Le code postal est requis';
+    } else if (normalizePostalCode(formData?.code_postal)?.length !== 5) {
+      newErrors.code_postal = 'Le code postal doit contenir 5 chiffres';
     }
 
     if (!formData?.ville?.trim()) {
       newErrors.ville = 'La ville est requise';
-    }
-
-    if (!formData?.prix_max || formData?.prix_max <= 0) {
-      newErrors.prix_max = 'Le prix maximum doit être supérieur à 0';
-    }
-
-    if (!formData?.dispo_de) {
-      newErrors.dispo_de = 'La date de début est requise';
-    }
-
-    if (!formData?.dispo_a) {
-      newErrors.dispo_a = 'La date de fin est requise';
-    }
-
-    if (formData?.dispo_de && formData?.dispo_a && new Date(formData?.dispo_de) > new Date(formData?.dispo_a)) {
-      newErrors.dispo_a = 'La date de fin doit être après la date de début';
     }
 
     setErrors(newErrors);
@@ -190,16 +309,18 @@ const CreateDemandRequest = () => {
   const handleSubmit = async (e) => {
     e?.preventDefault();
 
+    const payload = buildSubmitPayload(formData);
+
     if (!user) {
       try {
-        sessionStorage?.setItem(DEMAND_DRAFT_STORAGE_KEY, JSON.stringify(formData));
+        sessionStorage?.setItem(DEMAND_DRAFT_STORAGE_KEY, JSON.stringify(payload));
       } catch (error) {
         console.warn('Impossible de sauvegarder temporairement la demande:', error);
       }
 
       setErrors((prev) => ({
         ...prev,
-        submit: 'Connectez-vous ou créez un compte pour publier votre demande. Votre saisie a été conservée.'
+        submit: 'Connectez-vous ou creez un compte pour publier votre demande. Votre saisie a ete conservee.'
       }));
 
       navigate('/authentification', { state: { from: '/creer-demande' } });
@@ -211,24 +332,25 @@ const CreateDemandRequest = () => {
     setLoading(true);
 
     try {
-      const normalizedCategory = normalizeListingCategory(formData?.categorie_slug, categoryOptions);
+      const normalizedCategory = normalizeListingCategory(payload?.categorie_slug, categoryOptions);
       const { error } = await demandeService?.createDemande({
-        ...formData,
-        categorie_slug: normalizedCategory || formData?.categorie_slug,
+        ...payload,
+        categorie_slug: normalizedCategory || payload?.categorie_slug,
+        library_image_id: payload?.library_image_id,
         statut: 'open',
         moderation_status: 'pending'
       });
 
       if (error) {
-        setErrors({ submit: error?.message || 'Erreur lors de la création de la demande' });
+        setErrors({ submit: error?.message || 'Erreur lors de la creation de la demande' });
         return;
       }
 
       sessionStorage?.removeItem(DEMAND_DRAFT_STORAGE_KEY);
-      navigate('/tableau-bord-utilisateur?tab=demandes');
+      navigate('/mes-annonces#demandes');
     } catch (error) {
       console.error("Erreur d'envoi :", error);
-      setErrors({ submit: 'Une erreur est survenue. Veuillez réessayer.' });
+      setErrors({ submit: 'Une erreur est survenue. Veuillez reessayer.' });
     } finally {
       setLoading(false);
     }
@@ -251,11 +373,9 @@ const CreateDemandRequest = () => {
 
   const getDemandContext = () => {
     return [
+      formData?.code_postal ? `Code postal: ${formData?.code_postal}` : '',
       formData?.ville ? `Ville: ${formData?.ville}` : '',
-      formData?.rayon_km ? `Rayon: ${formData?.rayon_km} km` : '',
-      formData?.prix_max ? `Budget max: ${formData?.prix_max} EUR/jour` : '',
-      formData?.dispo_de ? `Date de début: ${formData?.dispo_de}` : '',
-      formData?.dispo_a ? `Date de fin: ${formData?.dispo_a}` : ''
+      formData?.rayon_km ? `Rayon: ${formData?.rayon_km} km` : ''
     ]
       ?.filter(Boolean)
       ?.join(', ');
@@ -268,16 +388,16 @@ const CreateDemandRequest = () => {
 
     const stylePrompts = {
       funny: {
-        title: `Génère 5 titres humoristiques et accrocheurs pour une demande de location de matériel. Catégorie: ${categoryLabel}${formData?.titre ? `, Idée: ${formData?.titre}` : ''}. Retourne uniquement les titres, un par ligne, sans numérotation.`,
-        description: `Génère une description humoristique, claire et sympathique pour une demande de location de matériel. Titre: ${formData?.titre}. Catégorie: ${categoryLabel}.${baseContext} La description doit être en français, rester utile, inclure le besoin principal, les contraintes et le budget. Maximum 180 mots.`
+        title: `Genere 5 titres humoristiques et accrocheurs pour une demande de location de materiel. Categorie: ${categoryLabel}${formData?.titre ? `, Idee: ${formData?.titre}` : ''}. Retourne uniquement les titres, un par ligne, sans numerotation.`,
+        description: `Genere une description humoristique, claire et sympathique pour une demande de location de materiel. Titre: ${formData?.titre}. Categorie: ${categoryLabel}.${baseContext} La description doit etre en francais, rester utile et inclure le besoin principal ainsi que les contraintes importantes. Maximum 180 mots.`
       },
       professional: {
-        title: `Génère 5 titres professionnels, clairs et rassurants pour une demande de location de matériel. Catégorie: ${categoryLabel}${formData?.titre ? `, Idée: ${formData?.titre}` : ''}. Retourne uniquement les titres, un par ligne, sans numérotation.`,
-        description: `Génère une description professionnelle, précise et convaincante pour une demande de location de matériel. Titre: ${formData?.titre}. Catégorie: ${categoryLabel}.${baseContext} La description doit être en français, structurée, mentionner le besoin exact, les contraintes, les dates et le budget. Maximum 180 mots.`
+        title: `Genere 5 titres professionnels, clairs et rassurants pour une demande de location de materiel. Categorie: ${categoryLabel}${formData?.titre ? `, Idee: ${formData?.titre}` : ''}. Retourne uniquement les titres, un par ligne, sans numerotation.`,
+        description: `Genere une description professionnelle, precise et convaincante pour une demande de location de materiel. Titre: ${formData?.titre}. Categorie: ${categoryLabel}.${baseContext} La description doit etre en francais, structuree et mentionner le besoin exact ainsi que les contraintes logistiques utiles. Maximum 180 mots.`
       },
       technical: {
-        title: `Génère 5 titres techniques et précis pour une demande de location de matériel. Catégorie: ${categoryLabel}${formData?.titre ? `, Idée: ${formData?.titre}` : ''}. Retourne uniquement les titres, un par ligne, sans numérotation.`,
-        description: `Génère une description technique et détaillée pour une demande de location de matériel. Titre: ${formData?.titre}. Catégorie: ${categoryLabel}.${baseContext} La description doit être en français, orientée spécifications, mentionner les caractéristiques attendues, la plage de budget et les contraintes d'usage. Maximum 180 mots.`
+        title: `Genere 5 titres techniques et precis pour une demande de location de materiel. Categorie: ${categoryLabel}${formData?.titre ? `, Idee: ${formData?.titre}` : ''}. Retourne uniquement les titres, un par ligne, sans numerotation.`,
+        description: `Genere une description technique et detaillee pour une demande de location de materiel. Titre: ${formData?.titre}. Categorie: ${categoryLabel}.${baseContext} La description doit etre en francais, orientee specifications et mentionner les caracteristiques attendues ainsi que les contraintes d'usage. Maximum 180 mots.`
       }
     };
 
@@ -286,12 +406,12 @@ const CreateDemandRequest = () => {
 
   const handleOpenStyleSelector = (fieldType) => {
     if (fieldType === 'description' && (!formData?.titre || !formData?.categorie_slug)) {
-      toast?.error('Veuillez renseigner le titre et la catégorie avant de générer la description');
+      toast?.error('Veuillez renseigner le titre et la categorie avant de generer la description');
       return;
     }
 
     if (fieldType === 'title' && !formData?.categorie_slug) {
-      toast?.error('Veuillez sélectionner une catégorie avant de générer le titre');
+      toast?.error('Veuillez selectionner une categorie avant de generer le titre');
       return;
     }
 
@@ -311,10 +431,10 @@ const CreateDemandRequest = () => {
   const handleSelectOption = (option) => {
     if (currentFieldType === 'title') {
       handleChange('titre', option);
-      toast?.success('Titre appliqué avec succès');
+      toast?.success('Titre applique avec succes');
     } else {
       handleChange('description', option);
-      toast?.success('Description appliquée avec succès');
+      toast?.success('Description appliquee avec succes');
     }
 
     setGeneratedOptionsOpen(false);
@@ -330,251 +450,322 @@ const CreateDemandRequest = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-surface">
-      <Header />
-
-      <main className="flex-1 container mx-auto px-4 py-6 md:py-8">
-        <div className="max-w-3xl mx-auto">
-          {/* En-tête */}
-          <div className="mb-6">
-            <button
-              onClick={() => navigate(-1)}
-              className="flex items-center gap-2 text-muted-foreground hover:text-foreground mb-4 transition-smooth"
-            >
-              <Icon name="ArrowLeft" size={20} />
-              <span>Retour</span>
-            </button>
-            <h1 className="text-2xl md:text-3xl font-bold text-foreground mb-2">
-              Créer une demande de location
-            </h1>
-            <p className="text-muted-foreground">
-              Décrivez l'équipement que vous recherchez et nous vous mettrons en relation avec des propriétaires
-            </p>
-          </div>
-
-          {!user && (
-            <div className="mb-6 rounded-lg border border-[#17a2b8]/30 bg-[#ecfeff] p-4">
-              <div className="flex gap-3">
-                <Icon name="Info" size={20} className="mt-0.5 flex-shrink-0 text-[#0f7081]" />
-                <div>
-                  <p className="text-sm font-semibold text-[#0f4d7a]">
-                    Vous pouvez commencer votre demande sans compte.
-                  </p>
-                  <p className="mt-1 text-sm text-[#0f7081]">
-                    La connexion sera demandée uniquement au moment de publier.
-                  </p>
+    <ActionPageShell
+      maxWidth="max-w-5xl"
+      hero={(
+        <ActionHero
+          eyebrow="Nouvelle demande"
+          title="Dites ce que vous cherchez"
+          subtitle="Le but ici: decrire le besoin, poser la zone, puis publier."
+          pills={[
+            { label: 'Besoin clair', icon: 'Sparkles' },
+            { label: 'Ville + rayon', icon: 'MapPin' },
+            { label: 'Publication rapide', icon: 'Send' },
+            !user ? { label: 'Compte au moment de publier', icon: 'Info' } : null
+          ]?.filter(Boolean)}
+          actions={(
+            <Button type="button" variant="outline" onClick={() => navigate(-1)} iconName="ArrowLeft">
+              Retour
+            </Button>
+          )}
+          aside={(
+            <div className="space-y-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">A retenir</p>
+              <div className="grid gap-3">
+                <div className="rounded-3xl border border-sky-200 bg-sky-50/90 p-4">
+                  <p className="text-sm font-semibold text-slate-950">1. Decrire</p>
+                  <p className="mt-1 text-sm font-medium text-sky-700">Objet + categorie</p>
+                </div>
+                <div className="rounded-3xl border border-slate-200 bg-slate-50/90 p-4">
+                  <p className="text-sm font-semibold text-slate-950">2. Situer</p>
+                  <p className="mt-1 text-sm font-medium text-slate-600">Ville + rayon</p>
+                </div>
+                <div className="rounded-3xl border border-emerald-200 bg-emerald-50/90 p-4">
+                  <p className="text-sm font-semibold text-slate-950">3. Publier</p>
+                  <p className="mt-1 text-sm font-medium text-emerald-700">La plateforme prend le relais</p>
                 </div>
               </div>
             </div>
           )}
-
-          {/* Formulaire */}
-          <form onSubmit={handleSubmit} className="bg-white rounded-lg shadow-elevation-2 p-6 space-y-6">
-            <div>
-              <h2 className="text-xl font-semibold text-foreground mb-2">Informations générales</h2>
-              <p className="text-sm text-muted-foreground">
-                Décrivez l'équipement recherché de manière claire et précise
-              </p>
-            </div>
-
-            {/* Titre */}
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <label className="block text-sm font-medium text-foreground">Titre de la demande *</label>
-                <button
-                  type="button"
-                  onClick={() => handleOpenStyleSelector('title')}
-                  disabled={isGenerating || !formData?.categorie_slug}
-                  className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-primary bg-primary/10 rounded-md hover:bg-primary/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <Sparkles className="w-4 h-4" />
-                  Générer avec l'IA
-                </button>
+          tone="sky"
+        />
+      )}
+    >
+      <div className="mx-auto max-w-3xl space-y-6">
+        {!user ? (
+          <ActionCard className="border-sky-200/80 bg-sky-50/90">
+            <div className="flex items-start gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white text-sky-700 shadow-sm">
+                <Icon name="Info" size={18} />
               </div>
-              <Input
-                type="text"
-                placeholder="Ex: Recherche perceuse sans fil pour 3 jours"
-                value={formData?.titre}
-                onChange={(e) => handleChange('titre', e?.target?.value)}
-                error={errors?.titre}
-              />
-              {errors?.titre && <p className="text-sm text-error mt-1">{errors?.titre}</p>}
+              <div className="space-y-1">
+                <p className="text-sm font-semibold text-slate-950">Vous pouvez preparer la demande maintenant.</p>
+                <p className="text-sm text-sky-800">Le compte sera demande seulement au moment de publier.</p>
+              </div>
+            </div>
+          </ActionCard>
+        ) : null}
+
+        <ActionCard className="overflow-hidden">
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Le principal</p>
+                <h2 className="mt-1 text-2xl font-semibold text-slate-950">Remplir puis publier</h2>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <span className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">Titre</span>
+                <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">Lieu</span>
+                <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">Publication</span>
+              </div>
             </div>
 
-            {/* Description */}
+            <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_220px]">
+              <div>
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <label className="block text-sm font-medium text-foreground">Titre *</label>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenStyleSelector('title')}
+                    disabled={isGenerating || !formData?.categorie_slug}
+                    className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-3 py-1.5 text-sm font-medium text-sky-700 transition-colors hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Sparkles className="h-4 w-4" />
+                    IA
+                  </button>
+                </div>
+                <Input
+                  type="text"
+                  placeholder="Ex: Recherche perceuse sans fil"
+                  value={formData?.titre}
+                  onChange={(e) => handleChange('titre', e?.target?.value)}
+                  error={errors?.titre}
+                />
+                {errors?.titre ? <p className="mt-1 text-sm text-error">{errors?.titre}</p> : null}
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-medium text-foreground">Categorie *</label>
+                <Select
+                  options={categoryOptions}
+                  value={formData?.categorie_slug}
+                  onChange={(value) => handleChange('categorie_slug', value)}
+                  placeholder="Choisir"
+                />
+                {errors?.categorie_slug ? <p className="mt-1 text-sm text-error">{errors?.categorie_slug}</p> : null}
+              </div>
+            </div>
+
             <div>
-              <div className="flex items-center justify-between mb-2">
+              <div className="mb-2 flex items-center justify-between gap-3">
                 <label className="block text-sm font-medium text-foreground">Description *</label>
                 <button
                   type="button"
                   onClick={() => handleOpenStyleSelector('description')}
                   disabled={isGenerating || !formData?.titre || !formData?.categorie_slug}
-                  className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-primary bg-primary/10 rounded-md hover:bg-primary/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-3 py-1.5 text-sm font-medium text-sky-700 transition-colors hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  <Sparkles className="w-4 h-4" />
-                  Générer avec l'IA
+                  <Sparkles className="h-4 w-4" />
+                  IA
                 </button>
               </div>
               <textarea
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 resize-none"
+                className="w-full resize-none rounded-2xl border border-input bg-background px-4 py-3 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 rows={4}
-                placeholder="Décrivez précisément l'équipement recherché, vos besoins et contraintes..."
+                placeholder="Expliquez rapidement ce qu'il vous faut, pour quoi faire, et s'il y a une contrainte importante."
                 value={formData?.description}
                 onChange={(e) => handleChange('description', e?.target?.value)}
               />
-              {errors?.description && <p className="text-sm text-error mt-1">{errors?.description}</p>}
+              {errors?.description ? <p className="mt-1 text-sm text-error">{errors?.description}</p> : null}
             </div>
 
-            {/* Catégorie */}
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-2">Catégorie *</label>
-              <Select
-                options={categoryOptions}
-                value={formData?.categorie_slug}
-                onChange={(value) => handleChange('categorie_slug', value)}
-                placeholder="Sélectionnez une catégorie"
-              />
-              {errors?.categorie_slug && (
-                <p className="text-sm text-error mt-1">{errors?.categorie_slug}</p>
+            <div className="space-y-4 rounded-[24px] border border-slate-200 bg-slate-50/80 p-4 md:p-5">
+              <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Illustration</p>
+                  <p className="mt-1 text-sm text-slate-600">
+                    Choisissez une image de la bibliothèque pour rendre la demande plus lisible.
+                  </p>
+                </div>
+                {selectedCategory ? (
+                  <div className="w-full md:w-[260px]">
+                    <Select
+                      options={[
+                        { value: '', label: 'Toutes les sous-categories' },
+                        ...librarySubcategoryOptions
+                      ]}
+                      value={librarySubcategoryFilter}
+                      onChange={(value) => setLibrarySubcategoryFilter(value)}
+                      placeholder="Filtrer les sous-categories"
+                    />
+                  </div>
+                ) : null}
+              </div>
+
+              {!selectedCategory ? (
+                <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-4 text-sm text-slate-500">
+                  Sélectionnez d&apos;abord une catégorie pour afficher les images disponibles.
+                </div>
+              ) : libraryImagesLoading ? (
+                <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm text-slate-500">
+                  Chargement des images...
+                </div>
+              ) : filteredLibraryImages?.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-4 text-sm text-slate-500">
+                  Aucune image disponible pour cette catégorie.
+                </div>
+              ) : (
+                <>
+                  {selectedLibraryImage ? (
+                    <div className="flex items-center gap-4 rounded-2xl border border-sky-200 bg-white px-4 py-4">
+                      <img
+                        src={selectedLibraryImage?.public_url}
+                        alt={selectedLibraryImage?.alt_text || selectedLibraryImage?.title || 'Illustration sélectionnée'}
+                        className="h-20 w-20 rounded-2xl object-cover"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold text-slate-950">{selectedLibraryImage?.title}</p>
+                        <p className="mt-1 text-sm text-slate-600">
+                          {selectedLibraryImage?.subcategoryLabel || 'Sous-categorie'}
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => handleChange('library_image_id', null)}
+                      >
+                        Retirer
+                      </Button>
+                    </div>
+                  ) : null}
+
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    {filteredLibraryImages?.map((image) => {
+                      const isSelected = String(formData?.library_image_id || '') === String(image?.id || '');
+
+                      return (
+                        <button
+                          key={image?.id}
+                          type="button"
+                          onClick={() => handleChange('library_image_id', image?.id)}
+                          className={`overflow-hidden rounded-3xl border bg-white text-left transition-all ${
+                            isSelected
+                              ? 'border-sky-400 ring-2 ring-sky-200'
+                              : 'border-slate-200 hover:border-sky-200 hover:shadow-sm'
+                          }`}
+                        >
+                          <div className="aspect-[4/3] bg-slate-100">
+                            <img
+                              src={image?.public_url}
+                              alt={image?.alt_text || image?.title || 'Illustration de bibliothèque'}
+                              className="h-full w-full object-cover"
+                            />
+                          </div>
+                          <div className="space-y-2 p-3">
+                            <div className="flex items-start justify-between gap-2">
+                              <p className="text-sm font-semibold text-slate-950 line-clamp-2">{image?.title}</p>
+                              {isSelected ? (
+                                <span className="inline-flex rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-semibold text-sky-700">
+                                  Choisie
+                                </span>
+                              ) : null}
+                            </div>
+                            <p className="text-xs text-slate-500">
+                              {image?.subcategoryLabel || 'Sous-categorie'}
+                            </p>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
               )}
             </div>
 
-            {/* Localisation */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-3 rounded-[24px] border border-slate-200 bg-slate-50/80 p-4 md:p-5">
               <div>
-                <label className="block text-sm font-medium text-foreground mb-2">Ville *</label>
-                <Input
-                  type="text"
-                  name="city"
-                  placeholder="Ex: Paris"
-                  value={formData?.ville}
-                  onChange={(e) => handleChange('ville', e?.target?.value)}
-                  autoComplete="address-level2"
-                  error={errors?.ville}
-                />
-                {errors?.ville && <p className="text-sm text-error mt-1">{errors?.ville}</p>}
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Zone de recherche</p>
+                <p className="mt-1 text-sm text-slate-600">Choisissez une ville, un code postal et un rayon.</p>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-2">Rayon de recherche</label>
-                <Select
-                  options={rayonOptions}
-                  value={formData?.rayon_km?.toString()}
-                  onChange={(value) => handleChange('rayon_km', Number.parseInt(value, 10) || 10)}
-                />
-              </div>
+              <CommuneAutocompleteFields
+                fieldsClassName="grid grid-cols-1 items-start gap-4 md:grid-cols-[180px_minmax(0,1fr)_180px]"
+                cityValue={formData?.ville}
+                postalCodeValue={formData?.code_postal}
+                onCityChange={(value) => handleChange('ville', value)}
+                onPostalCodeChange={(value) => handleChange('code_postal', value)}
+                cityError={errors?.ville}
+                postalCodeError={errors?.code_postal}
+                cityName="city"
+                postalCodeName="postalCode"
+                cityPlaceholder="Ex: Paris"
+                postalCodePlaceholder="Ex: 75002"
+                cityRequired
+                postalCodeRequired
+              >
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-foreground">Rayon</label>
+                  <Select
+                    options={rayonOptions}
+                    value={String(formData?.rayon_km || DEFAULT_RAYON_KM)}
+                    onChange={(value) => handleChange('rayon_km', Number.parseInt(value, 10) || DEFAULT_RAYON_KM)}
+                  />
+                </div>
+              </CommuneAutocompleteFields>
             </div>
 
-            {/* Prix */}
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-2">
-                Prix maximum par jour (EUR) *
-              </label>
-              <Input
-                type="number"
-                placeholder="Ex: 25"
-                value={formData?.prix_max}
-                onChange={(e) => handleChange('prix_max', e?.target?.value)}
-                min="0"
-                step="0.01"
-                error={errors?.prix_max}
-              />
-              {errors?.prix_max && <p className="text-sm text-error mt-1">{errors?.prix_max}</p>}
-            </div>
-
-            {/* Dates */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-2">Date de début *</label>
-                <Input
-                  type="date"
-                  value={formData?.dispo_de}
-                  onChange={(e) => handleChange('dispo_de', e?.target?.value)}
-                  min={new Date()?.toISOString()?.split('T')?.[0]}
-                  error={errors?.dispo_de}
-                />
-                {errors?.dispo_de && <p className="text-sm text-error mt-1">{errors?.dispo_de}</p>}
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-2">Date de fin *</label>
-                <Input
-                  type="date"
-                  value={formData?.dispo_a}
-                  onChange={(e) => handleChange('dispo_a', e?.target?.value)}
-                  min={formData?.dispo_de || new Date()?.toISOString()?.split('T')?.[0]}
-                  error={errors?.dispo_a}
-                />
-                {errors?.dispo_a && <p className="text-sm text-error mt-1">{errors?.dispo_a}</p>}
-              </div>
-            </div>
-
-            {/* Erreur d'envoi */}
-            {errors?.submit && (
-              <div className="bg-error/10 border border-error rounded-lg p-4">
+            {errors?.submit ? (
+              <div className="rounded-2xl border border-error bg-error/10 p-4">
                 <p className="text-sm text-error">{errors?.submit}</p>
               </div>
-            )}
+            ) : null}
 
-            {/* Actions */}
-            <div className="flex gap-4 pt-4">
-              <Button type="button" variant="outline" onClick={() => navigate(-1)} className="flex-1">
+            <div className="flex flex-col gap-3 border-t border-slate-100 pt-5 sm:flex-row">
+              <Button type="button" variant="outline" onClick={() => navigate(-1)} className="sm:flex-1">
                 Annuler
               </Button>
-              <Button type="submit" disabled={loading} className="flex-1">
+              <Button type="submit" disabled={loading} className="sm:flex-1">
                 {loading ? (
                   <>
                     <Icon name="Loader" size={20} className="animate-spin" />
-                    <span>Création...</span>
+                    <span>Publication...</span>
                   </>
                 ) : (
                   user ? 'Publier la demande' : 'Se connecter pour publier'
                 )}
               </Button>
             </div>
-          </form>
 
-          {/* Encadré d'information */}
-          <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <div className="flex gap-3">
-              <Icon name="Info" size={20} className="text-blue-600 flex-shrink-0 mt-0.5" />
-              <div>
-                <h3 className="font-semibold text-blue-900 mb-1">Comment ça marche ?</h3>
-                <ul className="text-sm text-blue-800 space-y-1">
-                  <li>- Votre demande sera modérée sous 24h</li>
-                  <li>- Notre algorithme recherchera automatiquement des équipements correspondants</li>
-                  <li>- Vous recevrez des propositions de propriétaires</li>
-                  <li>- Vous pourrez accepter ou refuser chaque proposition</li>
-                </ul>
-              </div>
+            <div className="rounded-2xl border border-amber-200 bg-amber-50/80 px-4 py-3">
+              <p className="text-sm font-medium text-amber-900">
+                A la fin, votre demande part en moderation puis la plateforme cherche les bonnes propositions.
+              </p>
             </div>
-          </div>
+          </form>
+        </ActionCard>
 
-          <StyleSelectorModal
-            isOpen={styleSelectorOpen}
-            onClose={() => setStyleSelectorOpen(false)}
-            onSelectStyle={handleStyleSelect}
-            fieldType={currentFieldType}
-          />
+        <StyleSelectorModal
+          isOpen={styleSelectorOpen}
+          onClose={() => setStyleSelectorOpen(false)}
+          onSelectStyle={handleStyleSelect}
+          fieldType={currentFieldType}
+        />
 
-          <GeneratedOptionsModal
-            isOpen={generatedOptionsOpen}
-            onClose={() => {
-              setGeneratedOptionsOpen(false);
-              setSelectedStyle(null);
-              setGeneratedOptions(null);
-            }}
-            options={generatedOptions}
-            onSelect={handleSelectOption}
-            onRegenerate={handleRegenerate}
-            fieldType={currentFieldType}
-            isLoading={isGenerating}
-          />
-        </div>
-      </main>
-
-      <Footer />
-    </div>
+        <GeneratedOptionsModal
+          isOpen={generatedOptionsOpen}
+          onClose={() => {
+            setGeneratedOptionsOpen(false);
+            setSelectedStyle(null);
+            setGeneratedOptions(null);
+          }}
+          options={generatedOptions}
+          onSelect={handleSelectOption}
+          onRegenerate={handleRegenerate}
+          fieldType={currentFieldType}
+          isLoading={isGenerating}
+        />
+      </div>
+    </ActionPageShell>
   );
 };
 

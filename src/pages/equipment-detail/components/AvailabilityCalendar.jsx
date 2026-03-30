@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   addDays,
   addMonths,
@@ -34,14 +34,8 @@ const AvailabilityCalendar = ({
   allowedEndWeekdays = [],
   minDate = addDays(new Date(), 1)
 }) => {
-  const [isOpen, setIsOpen] = useState(false);
   const [activeField, setActiveField] = useState('start');
   const [currentMonth, setCurrentMonth] = useState(() => startOfMonth(startDate || new Date()));
-  const [calendarPlacement, setCalendarPlacement] = useState({
-    openUpward: false,
-    maxHeight: 320
-  });
-  const rootRef = useRef(null);
 
   const blockedDaySet = useMemo(
     () => buildBlockedDateSet(unavailableDates || []),
@@ -68,59 +62,6 @@ const AvailabilityCalendar = ({
 
     setActiveField('end');
   }, [normalizedEndDate, normalizedStartDate]);
-
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const handleClickOutside = (event) => {
-      if (rootRef?.current && !rootRef.current.contains(event?.target)) {
-        setIsOpen(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [isOpen]);
-
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const updatePlacement = () => {
-      const rect = rootRef?.current?.getBoundingClientRect();
-      if (!rect) return;
-
-      const viewportHeight = window?.innerHeight || document?.documentElement?.clientHeight || 800;
-      const margin = 12;
-      const spaceBelow = Math.max(0, viewportHeight - rect.bottom - margin);
-      const spaceAbove = Math.max(0, rect.top - margin);
-
-      const openUpward = spaceBelow < 260 && spaceAbove > spaceBelow;
-      const availableSpace = openUpward ? spaceAbove : spaceBelow;
-      const maxHeight = Math.max(220, Math.min(420, Math.floor(availableSpace)));
-
-      setCalendarPlacement((previous) => {
-        if (
-          previous?.openUpward === openUpward
-          && Math.abs((previous?.maxHeight || 0) - maxHeight) < 4
-        ) {
-          return previous;
-        }
-
-        return { openUpward, maxHeight };
-      });
-    };
-
-    updatePlacement();
-    window.addEventListener('resize', updatePlacement);
-    window.addEventListener('scroll', updatePlacement, true);
-
-    return () => {
-      window.removeEventListener('resize', updatePlacement);
-      window.removeEventListener('scroll', updatePlacement, true);
-    };
-  }, [isOpen]);
 
   useEffect(() => {
     if (!startDate) return;
@@ -190,7 +131,6 @@ const AvailabilityCalendar = ({
 
     applySelection(normalizedStartDate, startOfDay(date));
     setActiveField('start');
-    setIsOpen(false);
   };
 
   const startLabel = normalizedStartDate
@@ -202,132 +142,106 @@ const AvailabilityCalendar = ({
     : (normalizedStartDate ? 'Cliquer pour choisir' : "Choisir d'abord un début");
 
   return (
-    <div ref={rootRef} className="relative">
-      <div className="rounded-lg border border-[#17a2b8]/20 bg-[#17a2b8]/5 p-3">
-        <p className="text-sm font-medium text-foreground">Choisissez vos dates</p>
-        <p className="text-xs text-muted-foreground mt-1">Sélection sur place, sans quitter la page.</p>
+    <div className="rounded-lg border border-[#17a2b8]/20 bg-[#17a2b8]/5 p-3">
+      <p className="text-sm font-medium text-foreground">Choisissez vos dates</p>
+      <p className="mt-1 text-xs text-muted-foreground">Sélection sur place, sans quitter la page.</p>
 
-        <div className="grid grid-cols-2 gap-2 mt-3">
-          <button
-            type="button"
-            onClick={() => {
-              setActiveField('start');
-              setIsOpen(true);
-            }}
-            className={cn(
-              'rounded-md border bg-white px-3 py-2 text-left transition-colors',
-              activeField === 'start' && isOpen ? 'border-[#17a2b8]/60 ring-1 ring-[#17a2b8]/30' : 'border-border'
-            )}
-          >
-            <p className="text-xs text-muted-foreground">Début</p>
-            <p className="text-sm font-medium text-foreground mt-0.5">{startLabel}</p>
-          </button>
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          onClick={() => setActiveField('start')}
+          className={cn(
+            'rounded-md border bg-white px-3 py-2 text-left transition-colors',
+            activeField === 'start' ? 'border-[#17a2b8]/60 ring-1 ring-[#17a2b8]/30' : 'border-border'
+          )}
+        >
+          <p className="text-xs text-muted-foreground">Début</p>
+          <p className="mt-0.5 text-sm font-medium text-foreground">{startLabel}</p>
+        </button>
 
-          <button
-            type="button"
-            onClick={() => {
-              setActiveField('end');
-              setIsOpen(true);
-            }}
-            className={cn(
-              'rounded-md border bg-white px-3 py-2 text-left transition-colors',
-              activeField === 'end' && isOpen ? 'border-[#17a2b8]/60 ring-1 ring-[#17a2b8]/30' : 'border-border'
-            )}
-          >
-            <p className="text-xs text-muted-foreground">Fin</p>
-            <p className="text-sm font-medium text-foreground mt-0.5">{endLabel}</p>
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={() => setActiveField('end')}
+          className={cn(
+            'rounded-md border bg-white px-3 py-2 text-left transition-colors',
+            activeField === 'end' ? 'border-[#17a2b8]/60 ring-1 ring-[#17a2b8]/30' : 'border-border'
+          )}
+        >
+          <p className="text-xs text-muted-foreground">Fin</p>
+          <p className="mt-0.5 text-sm font-medium text-foreground">{endLabel}</p>
+        </button>
       </div>
 
-      {isOpen && (
-        <div
-          className={cn(
-            'absolute z-30 w-full rounded-xl border border-border bg-white p-2 shadow-xl',
-            calendarPlacement?.openUpward ? 'bottom-full mb-2' : 'top-full mt-2'
-          )}
-          style={{ maxHeight: `${calendarPlacement?.maxHeight}px` }}
-        >
-          <div className="sticky top-0 z-10 bg-white pb-1">
-            <div className="flex items-center justify-between mb-1">
-              <button
-                type="button"
-                onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
-                className="h-7 w-7 rounded-md border border-border hover:bg-muted/50"
-              >
-                <Icon name="ChevronLeft" size={14} className="mx-auto" />
-              </button>
-              <p className="text-sm font-semibold capitalize">
-                {format(currentMonth, 'MMMM yyyy', { locale: fr })}
-              </p>
-              <button
-                type="button"
-                onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
-                className="h-7 w-7 rounded-md border border-border hover:bg-muted/50"
-              >
-                <Icon name="ChevronRight" size={14} className="mx-auto" />
-              </button>
-            </div>
-
-            <div className="grid grid-cols-7 gap-1 mb-1">
-              {weekDays?.map((day, index) => (
-                <div key={`${day}-${index}`} className="text-center text-[10px] font-medium text-muted-foreground py-1">
-                  {day}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="overflow-y-auto pr-1" style={{ maxHeight: `calc(${calendarPlacement?.maxHeight}px - 86px)` }}>
-            <div className="grid grid-cols-7 gap-1">
-              {Array.from({ length: firstDayOffset })?.map((_, index) => (
-                <div key={`empty-${index}`} className="h-7" />
-              ))}
-
-              {daysInMonth?.map((date) => {
-                const isDisabled = isDateDisabled(date);
-                const isSelected = (normalizedStartDate && isSameDay(date, normalizedStartDate))
-                  || (normalizedEndDate && isSameDay(date, normalizedEndDate));
-                const isInRange = isDateInRange(date);
-                const isToday = isSameDay(date, new Date());
-
-                return (
-                  <button
-                    key={date?.toISOString()}
-                    type="button"
-                    onClick={() => handleDateClick(date)}
-                    disabled={isDisabled}
-                    className={cn(
-                      'h-7 rounded-md text-xs transition-colors',
-                      isDisabled && 'cursor-not-allowed text-muted-foreground/40 line-through',
-                      isSelected && 'bg-[#17a2b8] text-white font-semibold',
-                      isInRange && !isSelected && 'bg-[#17a2b8]/20',
-                      isToday && !isSelected && 'border border-[#17a2b8]/50',
-                      !isDisabled && !isSelected && !isInRange && 'hover:bg-[#17a2b8]/10'
-                    )}
-                  >
-                    {format(date, 'd')}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="mt-2 flex items-center justify-between text-[10px] text-muted-foreground">
-            <span>{activeField === 'start' ? 'Choisissez un debut' : 'Choisissez une fin'}</span>
-            <button
-              type="button"
-              onClick={() => setIsOpen(false)}
-              className="underline hover:text-foreground"
-            >
-              Fermer
-            </button>
-          </div>
+      <div className="mt-3 rounded-xl border border-border bg-white p-2 shadow-sm">
+        <div className="mb-1 flex items-center justify-between">
+          <button
+            type="button"
+            onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
+            className="h-8 w-8 rounded-md border border-border hover:bg-muted/50"
+            aria-label="Mois précédent"
+          >
+            <Icon name="ChevronLeft" size={14} className="mx-auto" />
+          </button>
+          <p className="text-sm font-semibold capitalize">
+            {format(currentMonth, 'MMMM yyyy', { locale: fr })}
+          </p>
+          <button
+            type="button"
+            onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
+            className="h-8 w-8 rounded-md border border-border hover:bg-muted/50"
+            aria-label="Mois suivant"
+          >
+            <Icon name="ChevronRight" size={14} className="mx-auto" />
+          </button>
         </div>
-      )}
+
+        <div className="mb-1 grid grid-cols-7 gap-1">
+          {weekDays.map((day, index) => (
+            <div key={`${day}-${index}`} className="py-1 text-center text-[10px] font-medium text-muted-foreground">
+              {day}
+            </div>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-7 gap-1">
+          {Array.from({ length: firstDayOffset }).map((_, index) => (
+            <div key={`empty-${index}`} className="h-8" />
+          ))}
+
+          {daysInMonth.map((date) => {
+            const isDisabled = isDateDisabled(date);
+            const isSelected = (normalizedStartDate && isSameDay(date, normalizedStartDate))
+              || (normalizedEndDate && isSameDay(date, normalizedEndDate));
+            const isInRange = isDateInRange(date);
+            const isToday = isSameDay(date, new Date());
+
+            return (
+              <button
+                key={date.toISOString()}
+                type="button"
+                onClick={() => handleDateClick(date)}
+                disabled={isDisabled}
+                className={cn(
+                  'h-8 rounded-md text-xs transition-colors',
+                  isDisabled && 'cursor-not-allowed text-muted-foreground/40 line-through',
+                  isSelected && 'bg-[#17a2b8] text-white font-semibold',
+                  isInRange && !isSelected && 'bg-[#17a2b8]/20',
+                  isToday && !isSelected && 'border border-[#17a2b8]/50',
+                  !isDisabled && !isSelected && !isInRange && 'hover:bg-[#17a2b8]/10'
+                )}
+              >
+                {format(date, 'd')}
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="mt-2 flex items-center justify-between text-[10px] text-muted-foreground">
+          <span>{activeField === 'start' ? 'Choisissez un début' : 'Choisissez une fin'}</span>
+        </div>
+      </div>
     </div>
   );
 };
 
 export default AvailabilityCalendar;
-

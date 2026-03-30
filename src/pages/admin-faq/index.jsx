@@ -134,7 +134,7 @@ const AdminFAQ = () => {
 
   const handleSaveFaq = async () => {
     if (!formData?.question?.trim() || !formData?.answer?.trim()) {
-      toast?.error('Question et reponse sont obligatoires');
+      toast?.error('Question et réponse sont obligatoires');
       return;
     }
 
@@ -164,7 +164,7 @@ const AdminFAQ = () => {
         throw result?.error;
       }
 
-      toast?.success(editingFaq?.id ? 'Question mise ? jour' : 'Question ajoutee');
+      toast?.success(editingFaq?.id ? 'Question mise à jour' : 'Question ajoutée');
       closeModal();
       await loadFaqs();
     } catch (error) {
@@ -223,7 +223,7 @@ const AdminFAQ = () => {
         <div className="flex items-center justify-between mb-6 gap-3 flex-wrap">
           <div>
             <h1 className="text-2xl md:text-3xl font-bold text-foreground mb-2">Gérer la FAQ</h1>
-            <p className="text-muted-foreground">Questions chargees depuis la base de donnees</p>
+            <p className="text-muted-foreground">Questions chargées depuis la base de données</p>
           </div>
           <Button iconName="Plus" onClick={openCreateModal}>
             Ajouter une question
@@ -270,7 +270,7 @@ const AdminFAQ = () => {
             <div className="bg-white rounded-lg shadow-elevation-1 p-4">
               <Input
                 label="Recherche"
-                placeholder="Question ou reponse..."
+                placeholder="Question ou réponse..."
                 value={searchQuery}
                 onChange={(event) => setSearchQuery(event?.target?.value || '')}
                 iconName="Search"
@@ -333,8 +333,8 @@ const AdminFAQ = () => {
         </div>
 
         {showModal && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-modal p-4">
-            <div className="bg-white rounded-lg shadow-elevation-4 max-w-2xl w-full p-6">
+          <div className="modal-viewport z-modal bg-black/50">
+            <div className="modal-card modal-card-auto max-w-2xl rounded-lg bg-white p-6 shadow-elevation-4">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-xl font-semibold text-foreground">
                   {editingFaq?.id ? 'Modifier la question' : 'Ajouter une question'}
@@ -347,7 +347,7 @@ const AdminFAQ = () => {
               <div className="space-y-4">
                 <Input
                   label="Question"
-                  placeholder="Ex: Comment reserver un equipement ?"
+                  placeholder="Ex: Comment réserver un équipement ?"
                   value={formData?.question}
                   onChange={(event) =>
                     setFormData((prev) => ({
@@ -358,11 +358,11 @@ const AdminFAQ = () => {
                 />
 
                 <div>
-                  <label className="block text-sm font-medium text-foreground mb-2">Reponse</label>
+                <label className="block text-sm font-medium text-foreground mb-2">Réponse</label>
                   <textarea
                     className="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
                     rows={6}
-                    placeholder="Reponse detaillee..."
+                  placeholder="Réponse détaillée..."
                     value={formData?.answer}
                     onChange={(event) =>
                       setFormData((prev) => ({
@@ -406,5 +406,6 @@ const AdminFAQ = () => {
 };
 
 export default AdminFAQ;
+
 
 

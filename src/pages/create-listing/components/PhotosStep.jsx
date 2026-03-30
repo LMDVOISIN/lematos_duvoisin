@@ -63,10 +63,11 @@ const PhotosStep = ({ formData, updateFormData, errors }) => {
 
   return (
     <div className="space-y-6">
-      <div>
+      <div className="hidden">
         <h2 className="text-xl font-semibold text-foreground mb-2">Photos de votre matériel</h2>
         <p className="text-sm text-muted-foreground">Ajoutez des photos de qualité pour attirer les locataires</p>
       </div>
+
       {/* Zone de téléversement */}
       <div
         onDragOver={handleDragOver}
@@ -104,10 +105,12 @@ const PhotosStep = ({ formData, updateFormData, errors }) => {
           className="hidden"
         />
       </div>
+
       {errors?.photos && (
         <p className="text-sm text-error">{errors?.photos}</p>
       )}
-      {/* Photo Previews */}
+
+      {/* Photo previews */}
       {formData?.photos?.length > 0 && (
         <div>
           <p className="text-sm font-medium text-foreground mb-3">
@@ -157,23 +160,45 @@ const PhotosStep = ({ formData, updateFormData, errors }) => {
           </div>
         </div>
       )}
-      {/* Camera Capture Modal */}
+
+      {/* Camera capture modal */}
       <CameraCaptureModal
         isOpen={isCameraModalOpen}
         onClose={() => setIsCameraModalOpen(false)}
         onCapture={handleCameraCapture}
       />
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {[
+          'Lumière nette',
+          'Montrez plusieurs angles',
+          'Ajoutez les accessoires',
+          'La photo 1 devient la couverture'
+        ]?.map((tip) => (
+          <div
+            key={tip}
+            className="rounded-2xl border border-[#17a2b8]/15 bg-[#ecfeff] px-4 py-3 text-sm font-medium text-[#0f4d7a]"
+          >
+            {tip}
+          </div>
+        ))}
+      </div>
+
+      <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+        Un visuel de couverture "À louer" est généré automatiquement à partir de votre première photo.
+      </div>
+
       {/* Tips */}
-      <div className="bg-[#17a2b8]/10 border border-[#17a2b8]/20 rounded-lg p-4">
+      <div className="hidden bg-[#17a2b8]/10 border border-[#17a2b8]/20 rounded-lg p-4">
         <div className="flex gap-2">
           <Icon name="Lightbulb" size={18} className="text-[#17a2b8] flex-shrink-0 mt-0.5" />
           <div>
             <p className="text-sm font-medium text-foreground mb-2">Conseils pour de bonnes photos</p>
             <ul className="text-sm text-muted-foreground space-y-1">
-              <li>• Prenez des photos dans un endroit bien éclairé</li>
-              <li>• Montrez le matériel sous différents angles</li>
-              <li>• Incluez les accessoires fournis</li>
-              <li>• La première photo ser? la photo principale</li>
+              <li>Prenez des photos dans un endroit bien éclairé</li>
+              <li>Montrez le matériel sous différents angles</li>
+              <li>Incluez les accessoires fournis</li>
+              <li>La première photo sera la photo principale</li>
               <li>Un visuel À LOUER est généré automatiquement avec la ville, le code postal, le titre complet et le prix par jour</li>
             </ul>
           </div>

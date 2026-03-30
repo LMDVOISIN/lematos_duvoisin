@@ -1,4 +1,4 @@
-export const TEST_PROGRAM_FAMILIES = [
+﻿export const TEST_PROGRAM_FAMILIES = [
   'successful',
   'renter_failure',
   'owner_failure',
@@ -11,29 +11,29 @@ export const TEST_PROGRAM_FAMILY_META = {
   successful: {
     label: 'Parcours abouti',
     shortLabel: 'Abouti',
-    description: 'Aller jusqu au bout de la location sans embuche.'
+    description: "Aller jusqu'au bout de la location sans embûche."
   },
   renter_failure: {
-    label: 'Echec cote locataire',
-    shortLabel: 'Echec locataire',
-    description: 'Le parcours n aboutit pas du point de vue du locataire.'
+    label: 'Échec côté locataire',
+    shortLabel: 'Échec locataire',
+    description: "Le parcours n'aboutit pas du point de vue du locataire."
   },
   owner_failure: {
-    label: 'Echec cote proprietaire',
-    shortLabel: 'Echec proprietaire',
-    description: 'Le parcours n aboutit pas du point de vue du proprietaire.'
+    label: 'Échec côté propriétaire',
+    shortLabel: 'Échec propriétaire',
+    description: "Le parcours n'aboutit pas du point de vue du propriétaire."
   },
   transversal_incident: {
     label: 'Incidents transverses',
     shortLabel: 'Incident transverse',
-    description: 'Le parcours bloque sur les preuves, le systeme ou l arbitrage.'
+    description: "Le parcours bloqué sur les preuves, le système ou l'arbitrage."
   }
 };
 
 export const getTestProgramFamilyMeta = (family) => {
   return TEST_PROGRAM_FAMILY_META?.[family] || {
-    label: 'Parcours non classe',
-    shortLabel: 'Non classe',
+    label: 'Parcours non classé',
+    shortLabel: 'Non classé',
     description: ''
   };
 };
@@ -52,3 +52,4 @@ export const getTestProgramStepNumber = (completedFamilies = []) => {
 export const isTestProgramCompleted = (completedFamilies = []) => {
   return normalizeCompletedFamilies(completedFamilies)?.length >= TEST_PROGRAM_TOTAL_STEPS;
 };
+

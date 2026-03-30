@@ -110,7 +110,7 @@ const InformationsStep = ({ formData, updateFormData, errors, categoryOptions = 
 
   return (
     <div className="space-y-6">
-      <div>
+      <div className="hidden">
         <h2 className="text-xl font-semibold text-foreground mb-2">Informations générales</h2>
         <p className="text-sm text-muted-foreground">Décrivez votre matériel de manière claire et précise</p>
       </div>

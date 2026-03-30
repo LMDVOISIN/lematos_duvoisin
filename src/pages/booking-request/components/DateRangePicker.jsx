@@ -108,16 +108,16 @@ const DateRangePicker = ({
   const waitingForEnd = !!startDate && !endDate && !selectingStart;
 
   const instructionTitle = waitingForStart
-    ? 'Etape 1 : cliquez sur la date de debut'
+    ? 'Étape 1 : cliquez sur la date de début'
     : waitingForEnd
-      ? 'Etape 2 : cliquez sur la date de fin'
-      : 'Periode selectionnee';
+      ? 'Étape 2 : cliquez sur la date de fin'
+      : 'Période sélectionnée';
 
   const instructionDescription = waitingForStart
-    ? 'Selectionnez le premier jour de votre reservation.'
+    ? 'Sélectionnez le premier jour de votre réservation.'
     : waitingForEnd
-      ? 'Selectionnez le dernier jour de votre reservation.'
-      : 'Cliquez sur une nouvelle date de debut pour modifier la periode.';
+      ? 'Sélectionnez le dernier jour de votre réservation.'
+      : 'Cliquez sur une nouvelle date de début pour modifier la période.';
 
   const startDateLabel = startDate
     ? format(startDate, 'dd MMM yyyy', { locale: fr })
@@ -125,7 +125,7 @@ const DateRangePicker = ({
 
   const endDateLabel = endDate
     ? format(endDate, 'dd MMM yyyy', { locale: fr })
-    : (startDate ? "Cliquez sur une date de fin" : "Choisissez d'abord un début");
+    : (startDate ? 'Cliquez sur une date de fin' : "Choisissez d'abord un début");
 
   return (
     <div className="space-y-4">
@@ -149,7 +149,7 @@ const DateRangePicker = ({
               waitingForStart ? 'border-primary/40 ring-1 ring-primary/20' : 'border-border'
             )}
           >
-            <p className="text-xs text-muted-foreground">Debut</p>
+            <p className="text-xs text-muted-foreground">Début</p>
             <p className="text-sm font-medium text-foreground">{startDateLabel}</p>
           </div>
           <div

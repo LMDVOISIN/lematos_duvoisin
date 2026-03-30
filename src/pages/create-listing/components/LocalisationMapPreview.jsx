@@ -138,14 +138,14 @@ const LocalisationMapPreview = ({
   const mapKey = `${coordinates?.[0]}-${coordinates?.[1]}-${hasPreciseTarget ? 'target' : 'default'}`;
 
   return (
-    <div className="bg-surface rounded-lg border border-border p-4">
+    <div className="relative z-0 bg-surface rounded-lg border border-border p-4">
       <div className="flex items-center gap-2 mb-3">
         <Icon name="MapPin" size={18} className="text-[#17a2b8]" />
         <p className="text-sm font-medium text-foreground">Aperçu de la carte</p>
       </div>
 
       <div
-        className="rounded-lg overflow-hidden border border-border bg-white"
+        className="relative z-0 rounded-lg overflow-hidden border border-border bg-white"
         style={{ height: 'clamp(170px, 24vh, 280px)' }}
       >
         <MapContainer
@@ -153,6 +153,7 @@ const LocalisationMapPreview = ({
           center={coordinates}
           zoom={hasPreciseTarget ? 13 : 5}
           scrollWheelZoom={false}
+          className="relative z-0"
           style={{ height: '100%', width: '100%' }}
         >
           <TileLayer

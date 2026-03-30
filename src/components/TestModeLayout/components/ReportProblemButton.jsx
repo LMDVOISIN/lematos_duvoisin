@@ -2,7 +2,11 @@ import React, { useState } from 'react';
 import { AlertCircle, Upload, X } from 'lucide-react';
 import userTestingService from '../../../services/userTestingService';
 
-const ReportProblemButton = ({ sessionId, currentPageUrl }) => {
+const ReportProblemButton = ({
+  sessionId,
+  currentPageUrl,
+  floatingClassName = 'fab-mobile-safe-primary'
+}) => {
   const [showModal, setShowModal] = useState(false);
   const [severity, setSeverity] = useState('medium');
   const [description, setDescription] = useState('');
@@ -35,7 +39,7 @@ const ReportProblemButton = ({ sessionId, currentPageUrl }) => {
         }
       }
 
-      // Creer le signalement
+      // Créer le signalement
       await userTestingService?.createReport({
         sessionId,
         pageUrl: currentPageUrl,
@@ -66,7 +70,7 @@ const ReportProblemButton = ({ sessionId, currentPageUrl }) => {
       {/* Bouton flottant */}
       <button
         onClick={() => setShowModal(true)}
-        className="fixed fab-mobile-safe sm:bottom-6 sm:right-6 bg-red-600 text-white p-4 rounded-full shadow-lg hover:bg-red-700 transition-colors z-40"
+        className={`fixed bg-red-600 text-white p-4 rounded-full shadow-lg hover:bg-red-700 transition-colors z-40 ${floatingClassName}`}
         title="Signaler un problème"
       >
         <AlertCircle className="w-6 h-6" />

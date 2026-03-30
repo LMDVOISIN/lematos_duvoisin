@@ -4,6 +4,7 @@ import Footer from '../../components/Footer';
 import Icon from '../../components/AppIcon';
 import Button from '../../components/ui/Button';
 import Select from '../../components/ui/Select';
+import CommuneSearchInput from '../../components/ui/CommuneSearchInput';
 import geolocationService from '../../services/geolocationService';
 import { supabase } from '../../lib/supabase';
 import MapView from './components/MapView';
@@ -204,18 +205,18 @@ const GeolocationSearchEnhancement = () => {
                     Vous pouvez rechercher manuellement par ville ou code postal
                   </p>
                   <div className="flex gap-2">
-                    <input
-                      type="text"
+                    <CommuneSearchInput
                       name="city"
-                      placeholder="Ville ou code postal"
                       value={manualCity}
-                      onChange={(e) => {
-                        const nextCity = e?.target?.value;
+                      placeholder="Ville ou code postal"
+                      onChange={(nextCity) => {
                         setManualCity(nextCity);
                         setStoredCity(nextCity);
                       }}
-                      autoComplete="address-level2"
-                      className="flex-1 px-3 py-2 rounded-md border border-input bg-background text-sm"
+                      rememberCity
+                      className="flex-1"
+                      inputClassName="h-10 rounded-md border-input bg-background text-sm"
+                      labelClassName="hidden"
                     />
                     <Button
                       variant="primary"

@@ -15,6 +15,12 @@ import {
   normalizeScheduleWeekdays,
   rangeContainsBlockedDate
 } from '../utils/availabilityRules';
+import {
+  AVAILABILITY_HOLD_RESERVATION_STATUSES,
+  CHAT_ELIGIBLE_RESERVATION_STATUSES as CHAT_ELIGIBLE_RESERVATION_STATUS_SET,
+  CURRENT_RESERVATION_STATUSES,
+  isReservationPaymentConfirmed
+} from '../utils/reservationStatus';
 
 /**
  * Reservation Service
@@ -165,13 +171,34 @@ async function resolveAnnonceAvailabilityRules(annonceId) {
   return { data: {}, error: null };
 }
 
-const ONGOING_RESERVATION_STATUSES = ['accepted', 'paid', 'active', 'ongoing'];
-const CHAT_ELIGIBLE_RESERVATION_STATUSES = ['accepted', 'paid', 'active', 'ongoing'];
+const ONGOING_RESERVATION_STATUSES = Array.from(CURRENT_RESERVATION_STATUSES);
+const CHAT_ELIGIBLE_RESERVATION_STATUSES = Array.from(CHAT_ELIGIBLE_RESERVATION_STATUS_SET);
+const AVAILABILITY_HOLD_STATUSES = Array.from(AVAILABILITY_HOLD_RESERVATION_STATUSES);
+const PAYMENT_DEADLINE_MINUTES = 30;
 
 function getIsoDateOnly(value = new Date()) {
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date?.getTime())) return null;
   return date?.toISOString()?.slice(0, 10);
+}
+
+function getReservationFunctionUnavailableMessage(functionName) {
+  if (functionName === 'adjust-renter-reservation' || functionName === 'adjust-owner-reservation') {
+    return "Le service de modification de réservation est momentanément indisponible. Réessayez dans un instant.";
+  }
+
+  return "Le service de réservation est momentanément indisponible. Réessayez dans un instant.";
+}
+
+function filterVisibleUserReservations(rows = [], filters = {}) {
+  const reservations = Array.isArray(rows) ? rows : [];
+  if (filters?.includePending === true) return reservations;
+
+  return reservations?.filter((reservation) => {
+    const status = String(reservation?.status || '')?.trim()?.toLowerCase();
+    if (!['pending', 'accepted']?.includes(status)) return true;
+    return isReservationPaymentConfirmed(reservation);
+  });
 }
 
 function computeReservationRentalDays(startDateValue, endDateValue) {
@@ -298,272 +325,157 @@ async function getReservationWithProfileFallback(id, annonceSelect) {
   };
 }
 
+function buildFunctionUrl(functionName) {
+  const supabaseUrl = String(
+    import.meta.env?.VITE_SUPABASE_URL
+    || import.meta.env?.NEXT_PUBLIC_SUPABASE_URL
+    || ''
+  ).trim().replace(/\/$/, '');
+  if (!supabaseUrl || !functionName) return null;
+  return `${supabaseUrl}/functions/v1/${functionName}`;
+}
+
+async function readFunctionResponsePayload(response) {
+  if (!response) return null;
+
+  try {
+    return await response.clone().json();
+  } catch {
+    try {
+      const text = await response.clone().text();
+      return text ? { message: text } : null;
+    } catch {
+      return null;
+    }
+  }
+}
+
+async function getFreshAccessToken() {
+  const nowSec = Math.floor(Date.now() / 1000);
+  const minTtlSec = 90;
+
+  let session = null;
+  if (supabase?.auth?.getSession) {
+    const { data } = await supabase.auth.getSession();
+    session = data?.session || null;
+  }
+
+  const currentToken = session?.access_token || null;
+  const expiresAt = Number(session?.expires_at || 0) || 0;
+  const shouldRefresh = !currentToken || !expiresAt || (expiresAt - nowSec) <= minTtlSec;
+
+  if (!shouldRefresh) {
+    return currentToken;
+  }
+
+  if (supabase?.auth?.refreshSession) {
+    const { data: refreshedData } = await supabase.auth.refreshSession();
+    const refreshedToken = refreshedData?.session?.access_token || null;
+    if (refreshedToken) return refreshedToken;
+  }
+
+  return currentToken;
+}
+
+async function invokeReservationFunctionWithUserJwt(functionName, body = {}) {
+  try {
+    const functionUrl = buildFunctionUrl(functionName);
+    const supabaseAnonKey = String(
+      import.meta.env?.VITE_SUPABASE_ANON_KEY
+      || import.meta.env?.NEXT_PUBLIC_SUPABASE_ANON_KEY
+      || ''
+    ).trim();
+
+    if (!functionUrl || !supabaseAnonKey) {
+      return {
+        data: null,
+        error: {
+          message: 'Configuration Supabase Functions manquante.',
+          status: 500
+        }
+      };
+    }
+
+    const userAccessToken = await getFreshAccessToken();
+    if (!userAccessToken) {
+      return {
+        data: null,
+        error: {
+          message: 'Session expiree. Veuillez vous reconnecter.',
+          status: 401
+        }
+      };
+    }
+
+    let response = null;
+    try {
+      response = await fetch(functionUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          apikey: supabaseAnonKey,
+          Authorization: `Bearer ${supabaseAnonKey}`,
+          'x-ldv-user-jwt': userAccessToken
+        },
+        body: JSON.stringify(body || {})
+      });
+    } catch (networkError) {
+      const rawMessage = String(networkError?.message || '');
+      const isFetchFailure = /failed to fetch|networkerror|load failed/i?.test(rawMessage);
+
+      return {
+        data: null,
+        error: {
+          message: isFetchFailure
+            ? getReservationFunctionUnavailableMessage(functionName)
+            : (networkError?.message || "Impossible de joindre le service de réservation."),
+          status: null
+        }
+      };
+    }
+
+    const payload = await readFunctionResponsePayload(response);
+    if (!response?.ok) {
+      const isUnavailableStatus = [404, 502, 503, 504]?.includes(Number(response?.status || 0));
+
+      return {
+        data: null,
+        error: {
+          message: isUnavailableStatus
+            ? getReservationFunctionUnavailableMessage(functionName)
+            : (payload?.error || payload?.message || 'Erreur backend lors de la reservation.'),
+          status: Number(response?.status || 0) || null
+        }
+      };
+    }
+
+    return {
+      data: payload || {},
+      error: null
+    };
+  } catch (error) {
+    console.error('Invoke reservation function error:', error);
+    return {
+      data: null,
+      error: {
+        message: error?.message || 'Erreur backend lors de la reservation.'
+      }
+    };
+  }
+}
+
 const reservationService = {
   /**
    * Create new reservation
    */
   createReservation: async (reservationData) => {
-    try {
-      const { data: { user } } = await supabase?.auth?.getUser();
-      if (!user) return { data: null, error: { message: 'User not authenticated' } };
-
-      const currentUserId = normalizeId(user?.id);
-      const annonceId = reservationData?.annonce_id || null;
-      let resolvedOwnerId = normalizeId(reservationData?.owner_id);
-      const normalizedStartDate = toReservationDateOnly(reservationData?.start_date);
-      const normalizedEndDate = reservationData?.end_date
-        ? toReservationDateOnly(reservationData?.end_date)
-        : null;
-      const normalizedEndDateForValidation = normalizedEndDate || normalizedStartDate;
-      const normalizedStartDay = normalizeDateToLocalDay(normalizedStartDate);
-      const normalizedEndDay = normalizeDateToLocalDay(normalizedEndDateForValidation);
-
-      if (!normalizedStartDate) {
-        return {
-          data: null,
-          error: { message: 'Date de debut de reservation invalide.' }
-        };
+    void reservationData;
+    return {
+      data: null,
+      error: {
+        message: "La création directe de réservation côté client est désactivée. Une réservation n'est créée qu'après paiement confirmé."
       }
-
-      if (reservationData?.end_date && !normalizedEndDate) {
-        return {
-          data: null,
-          error: { message: 'Date de fin de reservation invalide.' }
-        };
-      }
-
-      if (!normalizedStartDay || !normalizedEndDay || normalizedEndDay < normalizedStartDay) {
-        return {
-          data: null,
-          error: { message: 'La date de fin doit etre egale ou posterieure ? la date de debut.' }
-        };
-      }
-
-      if (!isReservationStartDateAllowed(normalizedStartDate)) {
-        return {
-          data: null,
-          error: { message: SAME_DAY_RESERVATION_BLOCKED_MESSAGE }
-        };
-      }
-
-      if (annonceId) {
-        const { ownerId: ownerFromAnnonce, error: ownerLookupError } = await resolveAnnonceOwnerId(annonceId);
-        if (ownerLookupError) {
-          if (isSchemaError(ownerLookupError)) {
-            console.error('Erreur de schema dans createReservation/resolveAnnonceOwnerId:', ownerLookupError?.message);
-            return {
-              data: null,
-              error: {
-                ...ownerLookupError,
-                message: "Schéma annonces incomplet : impossible de vérifier le propriétaire."
-              }
-            };
-          }
-          console.warn('createReservation: owner lookup degraded:', ownerLookupError?.message || ownerLookupError);
-        } else if (ownerFromAnnonce) {
-          resolvedOwnerId = normalizeId(ownerFromAnnonce);
-        }
-      }
-
-      if (!resolvedOwnerId) {
-        return {
-          data: null,
-          error: { message: "Impossible d'identifier le propriétaire de cette annonce." }
-        };
-      }
-
-      if (currentUserId && resolvedOwnerId === currentUserId) {
-        return {
-          data: null,
-          error: { message: 'Vous ne pouvez pas louer votre propre annonce.' }
-        };
-      }
-
-      if (annonceId) {
-        const availabilityRulesResult = await resolveAnnonceAvailabilityRules(annonceId);
-        if (availabilityRulesResult?.error) {
-          return { data: null, error: availabilityRulesResult?.error };
-        }
-
-        const listingUnavailableDateSet = buildBlockedDateSet(
-          availabilityRulesResult?.data?.unavailable_dates || []
-        );
-        if (rangeContainsBlockedDate(normalizedStartDay, normalizedEndDay, listingUnavailableDateSet)) {
-          return {
-            data: null,
-            error: { message: 'Cette période inclut au moins une date indisponible sur cette annonce.' }
-          };
-        }
-
-        const pickupWeekdays = normalizeScheduleWeekdays(availabilityRulesResult?.data?.pickup_days || []);
-        if (!isDateAllowedByWeekdays(normalizedStartDay, pickupWeekdays)) {
-          return {
-            data: null,
-            error: { message: 'Le jour de début choisi ne correspond pas aux jours de récupération autorisés.' }
-          };
-        }
-
-        const returnWeekdays = normalizeScheduleWeekdays(
-          availabilityRulesResult?.data?.return_days || availabilityRulesResult?.data?.pickup_days || []
-        );
-        if (!isDateAllowedByWeekdays(normalizedEndDay, returnWeekdays)) {
-          return {
-            data: null,
-            error: { message: 'Le jour de fin choisi ne correspond pas aux jours de restitution autorisés.' }
-          };
-        }
-
-        const availabilityCheck = await reservationService?.checkAvailability(
-          annonceId,
-          normalizedStartDate,
-          normalizedEndDateForValidation
-        );
-        if (availabilityCheck?.error) {
-          return { data: null, error: availabilityCheck?.error };
-        }
-        if (!availabilityCheck?.available) {
-          return {
-            data: null,
-            error: { message: 'Ces dates sont déjà réservées sur cette annonce.' }
-          };
-        }
-      }
-
-      const reservationCreatedAt = new Date()?.toISOString();
-
-      let dataToInsert = {
-        ...reservationData,
-        start_date: normalizedStartDate,
-        end_date: normalizedEndDateForValidation,
-        owner_id: resolvedOwnerId,
-        renter_id: user?.id,
-        caution_mode: 'cb',
-        insurance_selected: false,
-        insurance_amount: 0,
-        // Instant booking: no owner approval workflow once a slot is open.
-        status: 'accepted',
-        owner_confirmed_at: reservationCreatedAt,
-        owner_reply_deadline_at: null,
-        created_at: reservationCreatedAt
-      };
-
-      let data = null;
-      let error = null;
-      let attempts = 0;
-
-      while (attempts < 12) {
-        const insertResult = await supabase?.from('reservations')?.insert(dataToInsert)?.select()?.single();
-        data = insertResult?.data || null;
-        error = insertResult?.error || null;
-
-        if (!error) break;
-        if (!isSchemaError(error)) break;
-
-        const missingColumn = extractMissingColumnName(error);
-        if (!missingColumn || !Object.prototype.hasOwnProperty.call(dataToInsert, missingColumn)) {
-          break;
-        }
-
-        delete dataToInsert[missingColumn];
-        attempts += 1;
-        console.warn(`[reservationService] createReservation: colonne absente ignoree (${missingColumn})`);
-      }
-
-      if (error) {
-        if (isSelfReservationConstraintError(error)) {
-          return { data: null, error: { ...error, message: 'Vous ne pouvez pas louer votre propre annonce.' } };
-        }
-        if (isSchemaError(error)) {
-          console.error('Erreur de schema dans createReservation:', error?.message);
-          return {
-            data: null,
-            error: {
-              ...error,
-              message: "Schéma réservations incomplet : appliquez les migrations (caution/dépôt)."
-            }
-          };
-        }
-        return { data: null, error };
-      }
-
-      // Get annonce and profiles (schema-tolerant: some envs miss annonces.caution_mode)
-      let annonce = null;
-      {
-        let annonceQuery = await supabase
-          ?.from('annonces')
-          ?.select('titre, owner_id, prix_jour, caution, caution_mode')
-          ?.eq('id', data?.annonce_id)
-          ?.single();
-
-        if (annonceQuery?.error) {
-          const missingAnnonceColumn = extractMissingColumnName(annonceQuery?.error);
-          if (missingAnnonceColumn === 'caution_mode') {
-            annonceQuery = await supabase
-              ?.from('annonces')
-              ?.select('titre, owner_id, prix_jour, caution')
-              ?.eq('id', data?.annonce_id)
-              ?.single();
-          }
-        }
-
-        if (annonceQuery?.error) {
-          console.warn('createReservation: annonce lookup degraded:', annonceQuery?.error?.message || annonceQuery?.error);
-        } else {
-          annonce = annonceQuery?.data || null;
-        }
-      }
-
-      const ownerIdForNotification = annonce?.owner_id || data?.owner_id || reservationData?.owner_id || null;
-      const renterIdForNotification = data?.renter_id || user?.id || null;
-
-      try {
-        const notificationJobs = [];
-
-        if (ownerIdForNotification) {
-          notificationJobs?.push(
-            notificationService?.createNotification(
-              ownerIdForNotification,
-              'new_reservation',
-              {
-                title: 'Nouvelle réservation instantanée',
-                message: 'Un locataire a réservé un créneau ouvert. La réservation est automatique et dépend seulement du paiement.',
-                reservation_id: data?.id,
-                annonce_title: annonce?.titre || 'Équipement'
-              },
-              { relatedId: data?.id }
-            )
-          );
-        }
-
-        if (renterIdForNotification) {
-          notificationJobs?.push(
-            notificationService?.createNotification(
-              renterIdForNotification,
-              'new_reservation',
-              {
-                title: 'Réservation créée',
-                message: "Votre réservation est créée instantanément. Le montant n'est versé au propriétaire qu'après l'utilisation du matériel et un état des lieux validé par les deux parties.",
-                reservation_id: data?.id,
-                annonce_title: annonce?.titre || 'Équipement'
-              },
-              { relatedId: data?.id }
-            )
-          );
-        }
-
-        if (notificationJobs?.length > 0) {
-          const results = await Promise.all(notificationJobs);
-          const failedResult = (results || [])?.find((result) => result?.error);
-          if (failedResult?.error) throw failedResult?.error;
-        }
-      } catch (notificationError) {
-        console.warn('createReservation: notifications degradees:', notificationError?.message || notificationError);
-      }
-      return { data, error: null };
-    } catch (error) {
-      console.error('Create reservation error:', error);
-      throw error;
-    }
+    };
   },
 
   /**
@@ -579,7 +491,7 @@ const reservationService = {
       if (error) {
         if (error?.code === 'PGRST116') return { data: null, error: null };
         if (isSchemaError(error)) {
-          console.error('Erreur de schÃ©ma dans getReservationById:', error?.message);
+          console.error('Erreur de schéma dans getReservationById:', error?.message);
           throw error;
         }
         return { data: null, error };
@@ -614,7 +526,7 @@ const reservationService = {
 
         const { data, error } = await query;
         if (!error) {
-          return { data, error: null };
+          return { data: filterVisibleUserReservations(data, filters), error: null };
         }
 
         const missingColumn = extractMissingColumnName(error);
@@ -647,12 +559,12 @@ const reservationService = {
           }
 
           const hydrated = await attachProfilesToReservations(fallbackData || [], { includeOwner: true });
-          return { data: hydrated, error: null };
+          return { data: filterVisibleUserReservations(hydrated, filters), error: null };
         }
 
         if (error?.code === 'PGRST116') return { data: [], error: null };
         if (isSchemaError(error)) {
-          console.error('Erreur de schÃ©ma dans getUserReservations:', error?.message);
+          console.error('Erreur de schéma dans getUserReservations:', error?.message);
           throw error;
         }
         return { data: null, error };
@@ -687,7 +599,7 @@ const reservationService = {
 
         const { data, error } = await query;
         if (!error) {
-          return { data, error: null };
+          return { data: filterVisibleUserReservations(data, filters), error: null };
         }
 
         const missingColumn = extractMissingColumnName(error);
@@ -720,7 +632,7 @@ const reservationService = {
           }
 
           const hydrated = await attachProfilesToReservations(fallbackData || [], { includeRenter: true });
-          return { data: hydrated, error: null };
+          return { data: filterVisibleUserReservations(hydrated, filters), error: null };
         }
 
         if (error?.code === 'PGRST116') return { data: [], error: null };
@@ -746,8 +658,18 @@ const reservationService = {
    */
   updateReservationStatus: async (id, newStatus, additionalData = {}) => {
     try {
+      const normalizedStatus = String(newStatus || '')?.trim()?.toLowerCase();
+      if (['pending', 'accepted']?.includes(normalizedStatus)) {
+        return {
+          data: null,
+          error: {
+            message: "Les statuts de prépaiement sont désactivés. Une réservation n'est créée qu'après paiement confirmé."
+          }
+        };
+      }
+
       const updateData = {
-        status: newStatus,
+        status: normalizedStatus,
         updated_at: new Date()?.toISOString(),
         ...additionalData
       };
@@ -777,7 +699,7 @@ const reservationService = {
       const endDate = new Date(fullReservation.end_date)?.toLocaleDateString('fr-FR');
 
       // Send emails based on status change
-      if (newStatus === 'accepted') {
+      if (normalizedStatus === 'accepted' || normalizedStatus === 'pending') {
         if (fullReservation?.renter?.email) {
           await sendEmail({
             to: fullReservation?.renter?.email,
@@ -794,7 +716,7 @@ const reservationService = {
             }
           });
         }
-      } else if (newStatus === 'cancelled') {
+      } else if (normalizedStatus === 'cancelled') {
         const cancellationReason = additionalData?.cancellation_reason || 'Non spécifiée';
 
         if (fullReservation?.renter?.email) {
@@ -825,7 +747,7 @@ const reservationService = {
             }
           });
         }
-      } else if (newStatus === 'paid') {
+      } else if (normalizedStatus === 'paid') {
         if (fullReservation?.renter?.email) {
           await sendEmail({
             to: fullReservation?.renter?.email,
@@ -857,7 +779,7 @@ const reservationService = {
             }
           });
         }
-      } else if (newStatus === 'completed') {
+      } else if (normalizedStatus === 'completed') {
         if (fullReservation?.renter?.email) {
           await sendEmail({
             to: fullReservation?.renter?.email,
@@ -899,9 +821,13 @@ const reservationService = {
    * Accept reservation (owner action)
    */
   acceptReservation: async (id) => {
-    return await reservationService?.updateReservationStatus(id, 'accepted', {
-      owner_confirmed_at: new Date()?.toISOString()
-    });
+    void id;
+    return {
+      data: null,
+      error: {
+        message: "Le workflow de pré-acceptation propriétaire est désactivé. Le paiement confirmé crée directement la réservation."
+      }
+    };
   },
 
   /**
@@ -912,6 +838,54 @@ const reservationService = {
       cancellation_reason: reason,
       cancelled_by: cancelledBy,
       cancelled_at: new Date()?.toISOString()
+    });
+  },
+
+  adjustRenterReservation: async ({
+    reservationId,
+    action,
+    reason = '',
+    newStartDate = null,
+    newEndDate = null
+  } = {}) => {
+    return await invokeReservationFunctionWithUserJwt('adjust-renter-reservation', {
+      reservationId,
+      action,
+      reason,
+      newStartDate,
+      newEndDate
+    });
+  },
+
+  createOwnerReservationAdjustmentCheckout: async ({
+    reservationId,
+    action,
+    reason = '',
+    newStartDate = null,
+    newEndDate = null,
+    returnBaseUrl,
+    cancelReturnBaseUrl
+  } = {}) => {
+    return await invokeReservationFunctionWithUserJwt('adjust-owner-reservation', {
+      reservationId,
+      action,
+      reason,
+      newStartDate,
+      newEndDate,
+      returnBaseUrl,
+      cancelReturnBaseUrl
+    });
+  },
+
+  syncOwnerReservationAdjustmentCheckout: async ({
+    reservationId,
+    action,
+    sessionId
+  } = {}) => {
+    return await invokeReservationFunctionWithUserJwt('adjust-owner-reservation', {
+      reservationId,
+      action,
+      sessionId
     });
   },
 
@@ -975,7 +949,7 @@ const reservationService = {
 
       if (error) {
         if (isSchemaError(error)) {
-          console.error('Erreur de schÃ©ma dans updatePaymentInfo:', error?.message);
+          console.error('Erreur de schéma dans updatePaymentInfo:', error?.message);
           throw error;
         }
         return { data: null, error };
@@ -1003,7 +977,7 @@ const reservationService = {
 
       if (error) {
         if (isSchemaError(error)) {
-          console.error('Erreur de schÃ©ma dans markPaymentCompleted:', error?.message);
+          console.error('Erreur de schéma dans markPaymentCompleted:', error?.message);
           throw error;
         }
         return { data: null, error };
@@ -1062,7 +1036,7 @@ const reservationService = {
 
       if (error) {
         if (isSchemaError(error)) {
-          console.error('Erreur de schÃ©ma dans updateDepositStatus:', error?.message);
+          console.error('Erreur de schéma dans updateDepositStatus:', error?.message);
           throw error;
         }
         return { data: null, error };
@@ -1150,7 +1124,7 @@ const reservationService = {
 
       if (error) {
         if (isSchemaError(error)) {
-          console.error('Erreur de schÃ©ma dans updateDocumentStatus:', error?.message);
+          console.error('Erreur de schéma dans updateDocumentStatus:', error?.message);
           throw error;
         }
         return { data: null, error };
@@ -1173,7 +1147,7 @@ const reservationService = {
       if (error) {
         if (error?.code === 'PGRST116') return { data: [], error: null };
         if (isSchemaError(error)) {
-          console.error('Erreur de schÃ©ma dans getReservationsByAnnonce:', error?.message);
+          console.error('Erreur de schéma dans getReservationsByAnnonce:', error?.message);
           throw error;
         }
         return { data: null, error };
@@ -1201,14 +1175,14 @@ const reservationService = {
         ?.from('reservations')
         ?.select('id, start_date, end_date')
         ?.eq('annonce_id', annonceId)
-        ?.in('status', ['accepted', 'paid', 'active', 'ongoing'])
+        ?.in('status', AVAILABILITY_HOLD_STATUSES)
         ?.lte('start_date', normalizedEndDate)
         ?.gte('end_date', normalizedStartDate);
 
       if (error) {
         if (error?.code === 'PGRST116') return { available: true, error: null };
         if (isSchemaError(error)) {
-          console.error('Erreur de schÃ©ma dans checkAvailability:', error?.message);
+          console.error('Erreur de schéma dans checkAvailability:', error?.message);
           throw error;
         }
         return { available: false, error };
@@ -1293,7 +1267,7 @@ const reservationService = {
 
       if (error) {
         if (isSchemaError(error)) {
-          console.error('Erreur de schÃ©ma dans hasOngoingReservationLinkBetweenUsers:', error?.message);
+          console.error('Erreur de schéma dans hasOngoingReservationLinkBetweenUsers:', error?.message);
           throw error;
         }
         return { data: false, error };

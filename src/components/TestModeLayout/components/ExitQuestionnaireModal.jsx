@@ -1,104 +1,100 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 
+const ExitQuestionnaireModal = ({
+  questions,
+  textPrompt = '',
+  textPlaceholder = '',
+  onComplete
+}) => {
+  const normalizedQuestions = useMemo(
+    () => (Array.isArray(questions) ? questions.filter(Boolean) : []),
+    [questions]
+  );
 
-const ExitQuestionnaireModal = ({ questions, onComplete }) => {
   const [answers, setAnswers] = useState({});
   const [perceivedInfo, setPerceivedInfo] = useState('');
-  const [nextActionUnderstood, setNextActionUnderstood] = useState(null);
 
-  const handleSubmit = () => {
-    const allQuestionsAnswered = questions?.every(q => answers?.[q]);
-    
-    if (allQuestionsAnswered && nextActionUnderstood !== null) {
-      onComplete({
-        exitAnswers: answers,
-        perceivedInfo,
-        nextActionUnderstood
-      });
-    }
+  const allQuestionsAnswered = normalizedQuestions.every((question) => {
+    return String(answers?.[question?.label] || '').trim().length > 0;
+  });
+  const isComplete = allQuestionsAnswered && String(perceivedInfo || '').trim().length > 0;
+
+  const handleChoice = (questionLabel, optionLabel) => {
+    setAnswers((previous) => ({
+      ...previous,
+      [questionLabel]: optionLabel
+    }));
   };
 
-  const isComplete = questions?.every(q => answers?.[q]) && nextActionUnderstood !== null;
+  const handleSubmit = () => {
+    if (!isComplete) return;
+
+    onComplete({
+      exitAnswers: answers,
+      perceivedInfo: perceivedInfo.trim()
+    });
+  };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
-        <div className="flex justify-between items-start mb-4">
-          <h3 className="text-lg font-semibold text-gray-900">Questionnaire de sortie</h3>
-        </div>
-
-        <p className="text-sm text-gray-600 mb-6">
-          Avant de quitter cette page, merci de répondre aux questions suivantes :
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 p-4">
+      <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-lg bg-white p-6 shadow-xl">
+        <h3 className="mb-2 text-lg font-semibold text-gray-900">Questionnaire rapide</h3>
+        <p className="mb-6 text-sm text-gray-600">
+          Merci de prendre quelques secondes pour decrire votre ressenti sur les deux dernieres pages.
         </p>
 
-        {/* Exit Questions */}
-        <div className="space-y-4 mb-6">
-          {questions?.map((question, index) => (
-            <div key={index}>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                {question}
-              </label>
-              <textarea
-                value={answers?.[question] || ''}
-                onChange={(e) => setAnswers(prev => ({ ...prev, [question]: e?.target?.value }))}
-                placeholder="Votre réponse..."
-                className="w-full border border-gray-300 rounded-lg p-3 min-h-[80px] focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
+        <div className="space-y-6">
+          {normalizedQuestions.map((question) => (
+            <div key={question?.id || question?.label} className="space-y-3">
+              <label className="block text-sm font-medium text-gray-800">{question?.label}</label>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {(Array.isArray(question?.options) ? question.options : []).map((option) => {
+                  const optionLabel = String(option || '').trim();
+                  const isSelected = answers?.[question?.label] === optionLabel;
+
+                  return (
+                    <button
+                      key={optionLabel}
+                      type="button"
+                      onClick={() => handleChoice(question?.label, optionLabel)}
+                      className={`rounded-lg border-2 px-4 py-3 text-left text-sm font-medium transition-colors ${
+                        isSelected
+                          ? 'border-blue-600 bg-blue-50 text-blue-700'
+                          : 'border-gray-300 text-gray-700 hover:border-blue-300'
+                      }`}
+                    >
+                      {optionLabel}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           ))}
-        </div>
 
-        {/* Perceived Information */}
-        <div className="mb-6">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Quelles informations avez-vous perçues sur cette page ?
-          </label>
-          <textarea
-            value={perceivedInfo}
-            onChange={(e) => setPerceivedInfo(e?.target?.value)}
-            placeholder="Décrivez les informations principales que vous avez retenues..."
-            className="w-full border border-gray-300 rounded-lg p-3 min-h-[80px] focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          />
-        </div>
-
-        {/* Next Action Understanding */}
-        <div className="mb-6">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Savez-vous quelle est la prochaine étape logique ?
-          </label>
-          <div className="flex gap-4">
-            <button
-              onClick={() => setNextActionUnderstood(true)}
-              className={`flex-1 py-2 px-4 rounded-lg border-2 transition-colors ${
-                nextActionUnderstood === true
-                  ? 'border-green-500 bg-green-50 text-green-700' :'border-gray-300 hover:border-green-500'
-              }`}
-            >
-              Oui, c'est clair
-            </button>
-            <button
-              onClick={() => setNextActionUnderstood(false)}
-              className={`flex-1 py-2 px-4 rounded-lg border-2 transition-colors ${
-                nextActionUnderstood === false
-                  ? 'border-red-500 bg-red-50 text-red-700' :'border-gray-300 hover:border-red-500'
-              }`}
-            >
-              Non, je ne sais pas
-            </button>
+          <div>
+            <label className="mb-2 block text-sm font-medium text-gray-800">
+              {textPrompt || "En quelques mots, qu'est-ce qui vous a aide ou bloque ?"}
+            </label>
+            <textarea
+              value={perceivedInfo}
+              onChange={(event) => setPerceivedInfo(event?.target?.value || '')}
+              rows={4}
+              className="w-full resize-none rounded-lg border border-gray-300 p-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+              placeholder={
+                textPlaceholder || 'Expliquez ce qui vous a aide, surpris, ou freine.'
+              }
+            />
           </div>
         </div>
 
         <button
+          type="button"
           onClick={handleSubmit}
           disabled={!isComplete}
-          className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+          className="mt-6 w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-300"
         >
           Valider et continuer
         </button>
-
-        <p className="text-xs text-gray-500 mt-3 text-center">
-          Vous devez répondre à toutes les questions pour continuer
-        </p>
       </div>
     </div>
   );

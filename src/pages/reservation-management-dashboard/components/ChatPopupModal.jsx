@@ -22,6 +22,7 @@ const ChatPopupModal = ({
   isOpen = false,
   conversationId = null,
   reservation = null,
+  initialDraftMessage = '',
   currentUserId = null,
   onClose = null,
   onOpenFullChat = null
@@ -99,6 +100,11 @@ const ChatPopupModal = ({
   }, [isOpen]);
 
   useEffect(() => {
+    if (!isOpen) return;
+    setNewMessage(String(initialDraftMessage || '')?.trim());
+  }, [initialDraftMessage, isOpen]);
+
+  useEffect(() => {
     if (!isOpen) return undefined;
 
     const onKeyDown = (event) => {
@@ -159,12 +165,12 @@ const ChatPopupModal = ({
 
   const modal = (
     <div
-      className="fixed inset-0 z-[2200] flex items-center justify-center bg-black/60 p-4"
+      className="modal-viewport z-[2200] bg-black/60"
       onClick={(event) => {
         if (event?.target === event?.currentTarget) onClose?.();
       }}
     >
-      <div className="bg-white rounded-xl shadow-elevation-4 w-full max-w-4xl h-[85vh] flex flex-col border border-border overflow-hidden">
+      <div className="modal-card modal-card-shell h-[85vh] max-w-4xl rounded-xl border border-border bg-white shadow-elevation-4">
         <div className="px-5 py-4 border-b border-border flex items-center justify-between gap-3">
           <div className="min-w-0">
             <h2 className="text-base md:text-lg font-semibold text-foreground truncate">{title}</h2>

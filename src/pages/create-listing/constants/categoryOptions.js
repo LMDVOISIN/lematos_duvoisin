@@ -5,7 +5,7 @@ export const LISTING_CATEGORY_OPTIONS = [
   { value: 'maison-mobilier', label: 'Maison & Mobilier' },
   { value: 'puericulture', label: 'Puériculture' },
   { value: 'evenementiel-loisirs', label: 'Événementiel & Loisirs' },
-  { value: 'sports-bien-etre', label: 'Sports & Bien-?tre' },
+  { value: 'sports-bien-etre', label: 'Sports & Bien-être' },
   { value: 'accessoires-vetements', label: 'Accessoires & Vêtements' },
   { value: 'accessoires-animaux', label: 'Accessoires pour Animaux' },
   { value: 'vehicules-mobilite', label: 'Véhicules & Mobilité' },
@@ -96,4 +96,3 @@ export const normalizeListingCategory = (value, options = LISTING_CATEGORY_OPTIO
   const resolvedOption = findCategoryOption(normalizedValue, options);
   return resolvedOption?.value || normalizedValue;
 };
-

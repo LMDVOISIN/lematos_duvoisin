@@ -7,11 +7,92 @@ import Button from '../../components/ui/Button';
 import { Checkbox } from '../../components/ui/Checkbox';
 import contractService from '../../services/contractService';
 import reservationService from '../../services/reservationService';
+import storageService from '../../services/storageService';
+import { isReservationPaymentConfirmed } from '../../utils/reservationStatus';
+import { isAdminVerificationScenario } from '../../utils/adminVerificationContext';
+
+const FALLBACK_IMAGE = '/assets/images/no_image.png';
+
+const toDateOrNull = (value) => {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date?.getTime()) ? null : date;
+};
+
+const computeRentalDays = (startDate, endDate) => {
+  const normalizedStart = toDateOrNull(startDate);
+  const normalizedEnd = toDateOrNull(endDate || startDate);
+  if (!normalizedStart || !normalizedEnd) return 0;
+
+  normalizedStart?.setHours(0, 0, 0, 0);
+  normalizedEnd?.setHours(0, 0, 0, 0);
+  const diff = Math.round((normalizedEnd - normalizedStart) / (1000 * 60 * 60 * 24));
+  return Math.max(1, diff + 1);
+};
+
+const buildPaymentRestartState = (reservation) => {
+  if (!reservation?.annonce_id) return null;
+
+  const photoPaths = Array?.isArray(reservation?.annonce?.photos) ? reservation?.annonce?.photos : [];
+  const photoUrls = storageService?.getAnnoncePhotoUrls(photoPaths);
+  const firstPhoto = photoUrls?.[0] || photoPaths?.[0] || FALLBACK_IMAGE;
+  const startDate = toDateOrNull(reservation?.start_date);
+  const endDate = toDateOrNull(reservation?.end_date) || startDate;
+  const rentalDays = computeRentalDays(startDate, endDate);
+  const dailyPrice = Number(reservation?.annonce?.prix_jour || 0) || 0;
+  const ownerId = reservation?.owner_id || reservation?.annonce?.owner_id || null;
+  const equipmentTotal = dailyPrice > 0 && rentalDays > 0
+    ? dailyPrice * rentalDays
+    : Math.max(0, Number(reservation?.total_price || 0) || 0);
+
+  return {
+    equipment: {
+      id: reservation?.annonce_id,
+      title: reservation?.annonce?.titre || 'Annonce',
+      category: reservation?.annonce?.categorie || reservation?.annonce?.category || '-',
+      dailyPrice,
+      cautionMode: 'cb',
+      images: [{ url: firstPhoto, alt: reservation?.annonce?.titre || 'Photo annonce' }],
+      owner: {
+        id: ownerId,
+        pseudonym: reservation?.owner?.pseudo || 'Propriétaire',
+        avatar: reservation?.owner?.avatar_url || FALLBACK_IMAGE,
+        avatarAlt: `Avatar de ${reservation?.owner?.pseudo || 'propriétaire'}`,
+        rating: null,
+        reviewCount: null
+      },
+      pickupTimeStart: reservation?.pickup_time_start || reservation?.annonce?.pickup_time_start || null,
+      pickupTimeEnd: reservation?.pickup_time_end || reservation?.annonce?.pickup_time_end || null,
+      returnTimeStart: reservation?.return_time_start || reservation?.annonce?.return_time_start || null,
+      returnTimeEnd: reservation?.return_time_end || reservation?.annonce?.return_time_end || null
+    },
+    bookingDetails: {
+      reservationId: null,
+      startDate,
+      endDate,
+      rentalDays,
+      equipmentTotal,
+      platformCommission: 0,
+      totalAmount: equipmentTotal,
+      insuranceSelected: false,
+      insuranceAmount: 0,
+      cautionAmount: Number(reservation?.annonce?.caution ?? reservation?.caution_amount ?? 0) || 0,
+      cautionMode: 'cb',
+      ownerId,
+      message: reservation?.message || '',
+      pickupTimeStart: reservation?.pickup_time_start || reservation?.annonce?.pickup_time_start || null,
+      pickupTimeEnd: reservation?.pickup_time_end || reservation?.annonce?.pickup_time_end || null,
+      returnTimeStart: reservation?.return_time_start || reservation?.annonce?.return_time_start || null,
+      returnTimeEnd: reservation?.return_time_end || reservation?.annonce?.return_time_end || null
+    }
+  };
+};
 
 const ContractGenerationPreview = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const reservationId = searchParams?.get('reservationId');
+  const isVerificationContractScenario = isAdminVerificationScenario('booking_contract_generation');
 
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
@@ -21,19 +102,42 @@ const ContractGenerationPreview = () => {
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [error, setError] = useState(null);
   const [generationStatus, setGenerationStatus] = useState('idle'); // idle, generating, processing, completed
+  const [verificationContractStatus, setVerificationContractStatus] = useState('');
 
   useEffect(() => {
-    if (reservationId) {
+    if (reservationId || isVerificationContractScenario) {
       loadReservationAndContract();
     } else {
       setError('ID de réservation manquant');
       setLoading(false);
     }
-  }, [reservationId]);
+  }, [isVerificationContractScenario, reservationId]);
 
   const loadReservationAndContract = async () => {
     try {
       setLoading(true);
+      if (isVerificationContractScenario) {
+        setReservation({
+          id: reservationId || 'verification-reservation',
+          annonce_id: 'verification-offer',
+          annonce: {
+            titre: 'Annonce de verification admin',
+            prix_jour: 19,
+            caution: 250
+          },
+          owner: {
+            pseudo: 'atelier_verification',
+            avatar_url: FALLBACK_IMAGE
+          },
+          start_date: '2026-04-02T12:00:00.000Z',
+          end_date: '2026-04-03T12:00:00.000Z',
+          total_amount: 38,
+          caution_amount: 250
+        });
+        setGenerationStatus('idle');
+        setLoading(false);
+        return;
+      }
       
       // Load reservation
       const { data: resData, error: resError } = await reservationService?.getReservationById(reservationId);
@@ -56,6 +160,18 @@ const ContractGenerationPreview = () => {
   };
 
   const handleGenerateContract = async () => {
+    if (isVerificationContractScenario) {
+      setGenerating(true);
+      setGenerationStatus('processing');
+      window.setTimeout(() => {
+        setContractUrl('/verification/contracts/admin-check.pdf');
+        setGenerationStatus('completed');
+        setGenerating(false);
+        setVerificationContractStatus('Contrat de vérification généré.');
+      }, 300);
+      return;
+    }
+
     try {
       setGenerating(true);
       setGenerationStatus('generating');
@@ -80,12 +196,48 @@ const ContractGenerationPreview = () => {
   };
 
   const handleAcceptContract = async () => {
+    if (isVerificationContractScenario) {
+      setVerificationContractStatus('Contrat de vérification accepté.');
+      return;
+    }
+
+    try {
+      if (isReservationPaymentConfirmed(reservation)) {
+        navigate('/mes-reservations');
+        return;
+      }
+
+      const paymentRestartState = buildPaymentRestartState(reservation);
+      if (!paymentRestartState) {
+        throw new Error("Impossible de préparer le nouveau parcours de paiement.");
+      }
+
+      const timestamp = new Date()?.toISOString();
+      const { error: acceptError } = await contractService?.acceptContract(reservationId);
+      if (acceptError) throw acceptError;
+
+      const { error: archiveError } = await reservationService?.updateReservationStatus(reservationId, 'cancelled_tenant_no_payment', {
+        contract_accepted_at: timestamp,
+        cancellation_reason: 'Relance du paiement via le nouveau parcours securise',
+        cancelled_at: timestamp
+      });
+      if (archiveError) throw archiveError;
+
+      navigate('/traitement-paiement', {
+        state: paymentRestartState
+      });
+      return;
+    } catch (err) {
+      console.error('Accept error:', err);
+      setError(err?.message || "Erreur d'acceptation");
+      return;
+    }
     try {
       const { error: acceptError } = await contractService?.acceptContract(reservationId);
       if (acceptError) throw acceptError;
 
       // Update reservation status to allow payment
-      await reservationService?.updateReservationStatus(reservationId, 'accepted', {
+      await reservationService?.updateReservationStatus(reservationId, 'cancelled_tenant_no_payment', {
         contract_accepted_at: new Date()?.toISOString()
       });
 
@@ -98,6 +250,11 @@ const ContractGenerationPreview = () => {
   };
 
   const handleDownload = () => {
+    if (isVerificationContractScenario) {
+      setVerificationContractStatus('PDF de vérification téléchargé.');
+      return;
+    }
+
     if (contractUrl) {
       window.open(contractUrl, '_blank');
     }
@@ -160,6 +317,12 @@ const ContractGenerationPreview = () => {
               </div>
             </div>
           )}
+
+          {isVerificationContractScenario && verificationContractStatus ? (
+            <div className="mb-6 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800" data-testid="verification-contract-status">
+              {verificationContractStatus}
+            </div>
+          ) : null}
 
           {/* Status Card */}
           <div className="bg-white rounded-xl shadow-sm border border-border p-6 mb-6">
@@ -304,6 +467,7 @@ const ContractGenerationPreview = () => {
                     </div>
 
                     <Checkbox
+                      id="verification-contract-accept"
                       checked={contractAccepted}
                       onChange={(e) => setContractAccepted(e?.target?.checked)}
                       label="J'accepte les termes du contrat"
@@ -327,8 +491,8 @@ const ContractGenerationPreview = () => {
       </main>
       {/* Preview Modal */}
       {showPreviewModal && contractUrl && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+        <div className="modal-viewport z-50 bg-black/50">
+          <div className="modal-card modal-card-shell max-w-4xl rounded-xl bg-white shadow-2xl">
             <div className="flex items-center justify-between p-4 border-b">
               <h3 className="text-lg font-semibold text-foreground">Prévisualisation du contrat</h3>
               <button

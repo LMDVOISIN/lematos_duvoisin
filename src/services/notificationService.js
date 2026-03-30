@@ -379,7 +379,9 @@ const notificationService = {
     DOCUMENT_UPLOADED: 'document_uploaded',
     REVIEW_RECEIVED: 'review_received',
     ANNONCE_APPROVED: 'annonce_approved',
-    ANNONCE_REJECTED: 'annonce_rejected'
+    ANNONCE_REJECTED: 'annonce_rejected',
+    DEMANDE_APPROVED: 'demande_approved',
+    DEMANDE_REJECTED: 'demande_rejected'
   }
 };
 

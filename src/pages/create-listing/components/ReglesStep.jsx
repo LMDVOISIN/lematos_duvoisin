@@ -9,7 +9,7 @@ const ReglesStep = ({
 }) => {
   return (
     <div className="space-y-6">
-      <div>
+      <div className="hidden">
         <h2 className="text-xl font-semibold text-foreground mb-2">Règles de location</h2>
         <p className="text-sm text-muted-foreground">Définissez les conditions d'utilisation de votre matériel</p>
       </div>
@@ -28,8 +28,24 @@ const ReglesStep = ({
         <p className="text-xs text-muted-foreground mt-1">Optionnel - Précisez les conditions particulières</p>
       </div>
 
+      <div className="flex flex-wrap gap-2">
+        {[
+          'Retour propre',
+          'Usage conforme',
+          'Signalement rapide',
+          'Respect des horaires'
+        ]?.map((rule) => (
+          <span
+            key={rule}
+            className="rounded-full border border-border bg-surface px-3 py-1 text-sm font-medium text-slate-600"
+          >
+            {rule}
+          </span>
+        ))}
+      </div>
+
       {/* Common Rules Examples */}
-      <div className="bg-surface rounded-lg border border-border p-4">
+      <div className="hidden bg-surface rounded-lg border border-border p-4">
         <p className="text-sm font-medium text-foreground mb-3">Exemples de règles courantes</p>
         <div className="space-y-2 text-sm text-muted-foreground">
           <div className="flex items-start gap-2">
@@ -51,8 +67,17 @@ const ReglesStep = ({
         </div>
       </div>
 
+      <div className="grid gap-3 md:grid-cols-2">
+        <div className="rounded-2xl border border-[#17a2b8]/15 bg-[#ecfeff] px-4 py-3 text-sm text-slate-700">
+          Les règles de la plateforme s'appliquent déjà automatiquement. Ajoutez seulement ce qui est propre à votre objet.
+        </div>
+        <div className="rounded-2xl border border-success/20 bg-success/10 px-4 py-3 text-sm text-slate-700">
+          Quand tout vous semble clair, cliquez sur "{submitCtaLabel}" pour envoyer l'annonce à modération.
+        </div>
+      </div>
+
       {/* General Conditions */}
-      <div className="bg-[#17a2b8]/10 border border-[#17a2b8]/20 rounded-lg p-4">
+      <div className="hidden bg-[#17a2b8]/10 border border-[#17a2b8]/20 rounded-lg p-4">
         <div className="flex gap-2">
           <Icon name="FileText" size={18} className="text-[#17a2b8] flex-shrink-0 mt-0.5" />
           <div>
@@ -66,7 +91,7 @@ const ReglesStep = ({
       </div>
 
       {/* Summary */}
-      <div className="bg-success/10 border border-success/20 rounded-lg p-4">
+      <div className="hidden bg-success/10 border border-success/20 rounded-lg p-4">
         <div className="flex gap-2">
           <Icon name="CheckCircle" size={18} className="text-success flex-shrink-0 mt-0.5" />
           <div>

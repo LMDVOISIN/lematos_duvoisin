@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Download, UserCheck, UserPlus, UserX } from 'lucide-react';
+import toast from 'react-hot-toast';
+import { Download, Trash2, UserCheck, UserPlus, UserX } from 'lucide-react';
 
 import userTestingService from '../../../services/userTestingService';
 
@@ -9,6 +10,7 @@ const ParticipantsTab = () => {
   const [afficherFenetreAjout, setAfficherFenetreAjout] = useState(false);
   const [nouvelEmailParticipant, setNouvelEmailParticipant] = useState('');
   const [nouveauGroupeProtocole, setNouveauGroupeProtocole] = useState('');
+  const [participantEnSuppression, setParticipantEnSuppression] = useState(null);
 
   useEffect(() => {
     chargerParticipants();
@@ -24,19 +26,52 @@ const ParticipantsTab = () => {
   const ajouterParticipant = async () => {
     if (!nouvelEmailParticipant?.trim()) return;
 
-    await userTestingService?.createTester({
+    const { error } = await userTestingService?.createTester({
       email: nouvelEmailParticipant,
       protocolGroup: nouveauGroupeProtocole
     });
 
+    if (error) {
+      toast?.error("Impossible d'ajouter ce participant.");
+      return;
+    }
+
     setNouvelEmailParticipant('');
     setNouveauGroupeProtocole('');
     setAfficherFenetreAjout(false);
+    toast?.success('Participant ajoute.');
     chargerParticipants();
   };
 
   const basculerStatutParticipant = async (participantId, statutActuel) => {
-    await userTestingService?.toggleTesterStatus(participantId, !statutActuel);
+    const { error } = await userTestingService?.toggleTesterStatus(participantId, !statutActuel);
+
+    if (error) {
+      toast?.error("Impossible de modifier le statut de ce participant.");
+      return;
+    }
+
+    toast?.success(statutActuel ? 'Participant desactive.' : 'Participant active.');
+    chargerParticipants();
+  };
+
+  const supprimerParticipant = async (participant) => {
+    const confirmation = window.confirm(
+      `Supprimer définitivement ${participant?.email} ? Cette action retire aussi ses données d'essai associées.`
+    );
+
+    if (!confirmation) return;
+
+    setParticipantEnSuppression(participant?.id);
+    const { error } = await userTestingService?.deleteTester(participant?.id);
+    setParticipantEnSuppression(null);
+
+    if (error) {
+      toast?.error("Impossible de supprimer ce participant.");
+      return;
+    }
+
+    toast?.success('Participant supprime.');
     chargerParticipants();
   };
 
@@ -139,16 +174,26 @@ const ParticipantsTab = () => {
                   </span>
                 </td>
                 <td className="whitespace-nowrap px-6 py-4 text-sm">
-                  <button
-                    onClick={() => basculerStatutParticipant(participant?.id, participant?.is_active)}
-                    className={`rounded-lg px-3 py-1 font-medium transition-colors ${
-                      participant?.is_active
-                        ? 'bg-red-100 text-red-700 hover:bg-red-200'
-                        : 'bg-green-100 text-green-700 hover:bg-green-200'
-                    }`}
-                  >
-                    {participant?.is_active ? 'Désactiver' : 'Activer'}
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => basculerStatutParticipant(participant?.id, participant?.is_active)}
+                      className={`rounded-lg px-3 py-1 font-medium transition-colors ${
+                        participant?.is_active
+                          ? 'bg-red-100 text-red-700 hover:bg-red-200'
+                          : 'bg-green-100 text-green-700 hover:bg-green-200'
+                      }`}
+                    >
+                      {participant?.is_active ? 'Desactiver' : 'Activer'}
+                    </button>
+                    <button
+                      onClick={() => supprimerParticipant(participant)}
+                      disabled={participantEnSuppression === participant?.id}
+                      className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-3 py-1 font-medium text-slate-700 transition-colors hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      {participantEnSuppression === participant?.id ? 'Suppression...' : 'Supprimer'}
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -157,8 +202,8 @@ const ParticipantsTab = () => {
       </div>
 
       {afficherFenetreAjout && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
-          <div className="w-full max-w-md rounded-lg bg-white p-6">
+        <div className="modal-viewport z-50 bg-black bg-opacity-50">
+          <div className="modal-card modal-card-auto max-w-md rounded-lg bg-white p-6">
             <h3 className="mb-4 text-xl font-semibold text-foreground">Ajouter un participant</h3>
 
             <div className="space-y-4">
@@ -183,9 +228,13 @@ const ParticipantsTab = () => {
                   type="text"
                   value={nouveauGroupeProtocole}
                   onChange={(event) => setNouveauGroupeProtocole(event?.target?.value)}
-                  placeholder="groupe_a"
+                  placeholder="ex. vague-mars ou observation-mobile"
                   className="w-full rounded-lg border border-border p-2 focus:ring-2 focus:ring-primary"
                 />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Conseil : utilisez un libelle simple pour reperer une vague, un contexte d essai
+                  ou un groupe d observation. L attribution miroir se fait maintenant automatiquement.
+                </p>
               </div>
             </div>
 
@@ -216,4 +265,3 @@ const ParticipantsTab = () => {
 };
 
 export default ParticipantsTab;
-

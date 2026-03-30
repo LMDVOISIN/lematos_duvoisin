@@ -26,7 +26,7 @@ const BookingSummary = ({
     <div className="bg-white rounded-lg shadow-elevation-3 p-6 space-y-6">
       <div>
         <h3 className="text-h5 font-heading text-foreground mb-4">
-          Recapitulatif
+          Récapitulatif
         </h3>
         <div className="flex gap-4">
           <img
@@ -79,7 +79,7 @@ const BookingSummary = ({
 
       <div className="space-y-3">
         <h4 className="text-sm font-medium text-muted-foreground">
-          Details de la reservation
+          Détails de la réservation
         </h4>
 
         {startDate && endDate ? (
@@ -133,7 +133,7 @@ const BookingSummary = ({
         ) : (
           <div className="text-sm text-muted-foreground py-4 text-center">
             <Icon name="Calendar" size={24} className="mx-auto mb-2 opacity-50" />
-            <p>Selectionnez vos dates pour voir le prix total</p>
+            <p>Sélectionnez vos dates pour voir le prix total</p>
           </div>
         )}
       </div>
@@ -145,15 +145,15 @@ const BookingSummary = ({
         </div>
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Icon name="Lock" size={16} className="text-success" />
-          <span>Donnees protegees</span>
+          <span>Données protégées</span>
         </div>
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Icon name="Shield" size={16} className="text-success" />
-          <span>Remboursement minimum garanti en cas de vol ou de deterioration</span>
+          <span>Remboursement minimum garanti en cas de vol ou de détérioration</span>
         </div>
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Icon name="Clock" size={16} className="text-primary" />
-          <span>Confirmation immediate du creneau</span>
+          <span>Confirmation immédiate du créneau</span>
         </div>
       </div>
     </div>

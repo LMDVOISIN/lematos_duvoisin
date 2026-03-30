@@ -2,7 +2,7 @@
 import { supabase } from '../lib/supabase';
 
 /**
- * Generer le PDF du contrat de location
+ * Générer le PDF du contrat de location
  */
 export const generateContractPDF = async (reservationData) => {
   try {
@@ -33,14 +33,14 @@ export const generateContractPDF = async (reservationData) => {
     doc?.text('CONTRAT DE LOCATION', 105, yPos, { align: 'center' });
     yPos += 15;
 
-    // Numero de contrat
+    // Numéro de contrat
     doc?.setFontSize(10);
     doc?.setFont('helvetica', 'normal');
     doc?.text(`Contrat N° ${id}`, 20, yPos);
     doc?.text(`Date : ${new Date()?.toLocaleDateString('fr-FR')}`, 150, yPos);
     yPos += 15;
 
-    // Section propriÃ©taire
+    // Section propriétaire
     doc?.setFontSize(12);
     doc?.setFont('helvetica', 'bold');
     doc?.text('PROPRIÉTAIRE (Bailleur)', 20, yPos);
@@ -68,7 +68,7 @@ export const generateContractPDF = async (reservationData) => {
     doc?.text(`Adresse: ${renter?.adresse || 'N/A'}, ${renter?.code_postal || ''} ${renter?.ville || ''}`, 20, yPos);
     yPos += 10;
 
-    // Details du matÃ©riel
+    // Détails du matériel
     doc?.setFontSize(12);
     doc?.setFont('helvetica', 'bold');
     doc?.text('OBJET DE LA LOCATION', 20, yPos);
@@ -83,7 +83,7 @@ export const generateContractPDF = async (reservationData) => {
     doc?.text(`Catégorie: ${annonce?.categorie || 'N/A'}`, 20, yPos);
     yPos += 10;
 
-    // Periode de location
+    // Période de location
     doc?.setFontSize(12);
     doc?.setFont('helvetica', 'bold');
     doc?.text('PÉRIODE DE LOCATION', 20, yPos);
@@ -140,7 +140,7 @@ export const generateContractPDF = async (reservationData) => {
       "3. Le locataire est responsable du matériel pendant toute la durée de la location.",
       "4. Avant la remise du matériel, le locataire doit déposer une pièce d'identité valide sur la plateforme. Si elle n'est pas déposée à temps, la réservation peut être annulée, un jour conservé et le solde remboursé.",
       "5. En cas de retard, dépassement ou non-restitution, la décision sur la caution passe par le workflow officiel d'état des lieux, contestation et modération ; si une capture est validée, les frais de paiement carte sur le montant capturé et d'éventuels frais de litige peuvent s'appliquer.",
-      "6. Le locataire doit disposer d'une assurance responsabilite civile couvrant la location.",
+      "6. Le locataire doit disposer d'une assurance responsabilité civile couvrant la location.",
       "7. Le propriétaire garantit que le matériel est en bon état de fonctionnement.",
       "8. Tout litige sera soumis aux tribunaux compétents de la juridiction du propriétaire."
     ];
@@ -185,16 +185,16 @@ export const generateContractPDF = async (reservationData) => {
 };
 
 /**
- * TÃ©lÃ©verser le contrat dans le stockage Supabase et mettre Ã  jour reservation_docs
+ * Téléverser le contrat dans le stockage Supabase et mettre à jour reservation_docs
  */
 export const uploadContract = async (reservationId, pdfDoc) => {
   try {
-    // Generer le blob PDF
+    // Générer le blob PDF
     const pdfBlob = pdfDoc?.output('blob');
     const fileName = `contract_${reservationId}_${Date.now()}.pdf`;
     const filePath = `contracts/${fileName}`;
 
-    // TÃ©lÃ©verser vers le stockage Supabase
+    // Téléverser vers le stockage Supabase
     const { data: uploadData, error: uploadError } = await supabase?.storage?.from('reservation-docs')?.upload(filePath, pdfBlob, {
         contentType: 'application/pdf',
         upsert: false
@@ -221,13 +221,13 @@ export const uploadContract = async (reservationId, pdfDoc) => {
 
     return { contractUrl, success: true };
   } catch (error) {
-    console.error('Erreur lors du t?l?versement du contrat :', error);
+    console.error('Erreur lors du téléversement du contrat :', error);
     throw error;
   }
 };
 
 /**
- * Generer et tÃ©lÃ©verser le contrat quand la reservation est acceptee
+ * Générer et téléverser le contrat quand la réservation est acceptée
  */
 export const generateAndUploadContract = async (reservationId) => {
   try {
@@ -242,21 +242,21 @@ export const generateAndUploadContract = async (reservationId) => {
     if (fetchError) throw fetchError;
     if (!reservation) throw new Error('Réservation introuvable');
 
-    // Generer le PDF
+    // Générer le PDF
     const pdfDoc = await generateContractPDF(reservation);
 
-    // TÃ©lÃ©verser et enregistrer l'URL
+    // Téléverser et enregistrer l'URL
     const result = await uploadContract(reservationId, pdfDoc);
 
     return result;
   } catch (error) {
-    console.error('Erreur lors de la generation et du t?l?versement du contrat :', error);
+    console.error('Erreur lors de la génération et du téléversement du contrat :', error);
     throw error;
   }
 };
 
 /**
- * Telecharger le PDF du contrat
+ * Télécharger le PDF du contrat
  */
 export const downloadContract = async (contractUrl, reservationId) => {
   try {

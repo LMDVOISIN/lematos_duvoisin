@@ -7,12 +7,6 @@ import { useAuth } from "../../contexts/AuthContext";
 import adminService from "../../services/adminService";
 import { grantAdminAccess, isAdminAccessGranted } from "../../utils/adminAccessGate";
 
-const getAdminPassword = () => {
-  const fromNextPublic = String(import.meta.env?.NEXT_PUBLIC_ADMIN_PASSWORD || "").trim();
-  const fromVite = String(import.meta.env?.VITE_ADMIN_ACCESS_PASSWORD || "").trim();
-  return fromNextPublic || fromVite;
-};
-
 const toAdminPathOrFallback = (path, fallback = "/administration-tableau-bord") => {
   if (typeof path === "string" && path.startsWith("/administration-")) {
     return path;
@@ -23,17 +17,17 @@ const toAdminPathOrFallback = (path, fallback = "/administration-tableau-bord") 
 const AdminAccess = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { isAuthenticated, loading, profileLoading, refreshProfile, userProfile } = useAuth();
+  const { isAuthenticated, loading, profileLoading, userProfile } = useAuth();
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [rememberDevice, setRememberDevice] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
-  const configuredPassword = useMemo(() => getAdminPassword(), []);
-
   const redirectPath = useMemo(() => {
     return toAdminPathOrFallback(location?.state?.from);
   }, [location?.state?.from]);
+
+  const hasAuthenticatedAdminProfile = isAuthenticated && userProfile?.is_admin === true;
 
   if (loading || (isAuthenticated && profileLoading && !userProfile)) {
     return (
@@ -42,39 +36,51 @@ const AdminAccess = () => {
           <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-white/70 mb-4">
             <div className="w-6 h-6 rounded-full border-4 border-[#0ea5b7]/20 border-t-[#0ea5b7] animate-spin" />
           </div>
-          <p className="text-sm text-muted-foreground">Verification de l'acces admin...</p>
+          <p className="text-sm text-muted-foreground">Vérification de l'accès admin...</p>
         </div>
       </div>
     );
   }
 
-  if (!isAuthenticated) {
-    return <Navigate to="/authentification" replace state={{ from: redirectPath }} />;
+  if (hasAuthenticatedAdminProfile && isAdminAccessGranted()) {
+    return <Navigate to={redirectPath} replace />;
   }
 
   const handleSubmit = async (event) => {
     event?.preventDefault();
 
-    if (!configuredPassword) {
-      setError("Le mot de passe admin n'est pas configure.");
-      return;
-    }
+    const normalizedPassword = String(password || "").trim();
 
-    if (password !== configuredPassword) {
-      setError("Mot de passe incorrect.");
+    if (!normalizedPassword) {
+      setError("Saisissez le mot de passe admin.");
       return;
     }
 
     try {
       setSubmitting(true);
+      setError("");
 
-      const { error: adminGrantError } = await adminService?.grantCurrentUserAdminAccess(password);
-      if (adminGrantError) {
-        setError(adminGrantError?.message || "Impossible d'activer l'acces administrateur.");
+      if (hasAuthenticatedAdminProfile) {
+        const { error: validationError } = await adminService?.validateAdminPassword(normalizedPassword);
+        if (validationError) {
+          setError(validationError?.message || "Mot de passe incorrect.");
+          return;
+        }
+
+        grantAdminAccess({ persistent: rememberDevice });
+        navigate(redirectPath, { replace: true });
         return;
       }
 
-      await refreshProfile?.();
+      const { error: adminSessionError } = await adminService?.openDedicatedAdminSession(normalizedPassword, {
+        preserveCurrentSession: isAuthenticated && userProfile?.is_admin !== true
+      });
+
+      if (adminSessionError) {
+        setError(adminSessionError?.message || "Impossible d'activer l'accès administrateur.");
+        return;
+      }
+
       grantAdminAccess({ persistent: rememberDevice });
       navigate(redirectPath, { replace: true });
     } finally {

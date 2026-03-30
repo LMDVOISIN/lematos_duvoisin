@@ -76,8 +76,8 @@ const FeedbackModal = ({ isOpen, onClose }) => {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1100] p-4">
-      <div className="bg-white rounded-lg shadow-elevation-4 max-w-lg w-full p-6">
+    <div className="modal-viewport z-[1100] bg-black/50">
+      <div className="modal-card modal-card-auto max-w-lg rounded-lg bg-white p-6 shadow-elevation-4">
         <div className="flex items-start justify-between gap-4 mb-4">
           <div>
             <h2 className="text-xl font-semibold text-foreground">Envoyer un feedback</h2>

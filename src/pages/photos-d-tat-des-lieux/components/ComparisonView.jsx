@@ -481,7 +481,7 @@ const ComparisonView = ({
 
       <div className="bg-white rounded-lg shadow-elevation-1 p-6">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
-          <h3 className="text-lg font-semibold text-foreground">Decision sur la caution</h3>
+          <h3 className="text-lg font-semibold text-foreground">Décision sur la caution</h3>
           <div className="flex items-center gap-2 text-sm">
             <span className="text-muted-foreground">Montant:</span>
             <span className="font-semibold text-foreground">{Number(cautionAmount || 0)?.toFixed(2)} EUR</span>
@@ -493,7 +493,7 @@ const ComparisonView = ({
 
         {!hasCaution ? (
           <div className="bg-surface rounded-lg p-4 text-sm text-muted-foreground">
-            Aucune empreinte CB a gerer pour cette reservation.
+            Aucune empreinte CB à gérer pour cette réservation.
           </div>
         ) : (
           <>
@@ -542,7 +542,7 @@ const ComparisonView = ({
 
             {!partialCaptureSupported && (
               <p className="mt-3 text-xs text-muted-foreground">
-                La retenue partielle sera activee quand le montant de prelevement partiel sera pris en charge.
+                La retenue partielle sera activée quand le montant de prélèvement partiel sera pris en charge.
               </p>
             )}
           </>

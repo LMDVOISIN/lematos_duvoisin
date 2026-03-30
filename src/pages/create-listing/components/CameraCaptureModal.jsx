@@ -51,7 +51,7 @@ const CameraCaptureModal = ({ isOpen, onClose, onCapture }) => {
         });
 
         if (!photo?.dataUrl) {
-          throw new Error('Aucune photo n a ete retournee par la camera.');
+      throw new Error("Aucune photo n'a été retournée par la caméra.");
         }
 
         const blob = await dataUrlToBlob(photo.dataUrl);
@@ -62,7 +62,7 @@ const CameraCaptureModal = ({ isOpen, onClose, onCapture }) => {
 
         if (!isUserCancellation) {
           console.error('Camera access error:', err);
-          setError('Impossible d acceder a la camera de votre appareil.');
+      setError("Impossible d'accéder à la caméra de votre appareil.");
         }
       } finally {
         setIsLoading(false);
@@ -84,14 +84,14 @@ const CameraCaptureModal = ({ isOpen, onClose, onCapture }) => {
       setIsLoading(false);
     } catch (err) {
       console.error('Camera access error:', err);
-      let errorMessage = "Impossible d'acceder a la camera";
+      let errorMessage = "Impossible d'accéder à la caméra";
 
       if (err?.name === 'NotAllowedError' || err?.name === 'PermissionDeniedError') {
-        errorMessage = "Acces a la camera refuse. Veuillez autoriser l'acces dans les parametres de votre navigateur.";
+        errorMessage = "Accès à la caméra refusé. Veuillez autoriser l'accès dans les paramètres de votre navigateur.";
       } else if (err?.name === 'NotFoundError' || err?.name === 'DevicesNotFoundError') {
-        errorMessage = 'Aucune camera detectee sur cet appareil.';
+        errorMessage = 'Aucune caméra détectée sur cet appareil.';
       } else if (err?.name === 'NotReadableError' || err?.name === 'TrackStartError') {
-        errorMessage = 'La camera est deja utilisee par une autre application.';
+        errorMessage = 'La caméra est déjà utilisée par une autre application.';
       }
 
       setError(errorMessage);
@@ -174,16 +174,16 @@ const CameraCaptureModal = ({ isOpen, onClose, onCapture }) => {
           {error ? (
             <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center">
               <Icon name="AlertCircle" size={48} className="text-error mb-4" />
-              <p className="text-white text-lg mb-2">Erreur d acces camera</p>
+            <p className="text-white text-lg mb-2">Erreur d'accès caméra</p>
               <p className="text-white/70 text-sm mb-4">{error}</p>
               <Button onClick={() => void startCamera()} variant="outline">
-                Reessayer
+                Réessayer
               </Button>
             </div>
           ) : isLoading ? (
             <div className="absolute inset-0 flex flex-col items-center justify-center">
               <div className="animate-spin rounded-full h-12 w-12 border-4 border-[#17a2b8] border-t-transparent mb-4" />
-              <p className="text-white">Chargement de la camera...</p>
+            <p className="text-white">Chargement de la caméra...</p>
             </div>
           ) : capturedImage ? (
             <img
@@ -194,7 +194,7 @@ const CameraCaptureModal = ({ isOpen, onClose, onCapture }) => {
           ) : isNativeCameraExperience() ? (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 p-6 text-center">
               <Icon name="Camera" size={48} className="text-white" />
-              <p className="text-white text-lg">La camera native de votre appareil va s ouvrir.</p>
+            <p className="text-white text-lg">La caméra native de votre appareil va s'ouvrir.</p>
               <p className="text-white/70 text-sm">Utilisez le bouton ci-dessous pour reprendre une photo.</p>
             </div>
           ) : (
@@ -227,7 +227,7 @@ const CameraCaptureModal = ({ isOpen, onClose, onCapture }) => {
                   className="rounded-full min-w-16 h-16 px-6"
                 >
                   <Icon name="Camera" size={24} className="mr-2" />
-                  {isNativeCameraExperience() ? 'Ouvrir la camera' : 'Capturer'}
+              {isNativeCameraExperience() ? 'Ouvrir la caméra' : 'Capturer'}
                 </Button>
               </div>
             )}

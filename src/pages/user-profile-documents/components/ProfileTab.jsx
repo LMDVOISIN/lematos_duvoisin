@@ -1,13 +1,37 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import toast from 'react-hot-toast';
 import Icon from '../../../components/AppIcon';
 import Image from '../../../components/AppImage';
 import Button from '../../../components/ui/Button';
 import Input from '../../../components/ui/Input';
+import CommuneAutocompleteFields from '../../../components/ui/CommuneAutocompleteFields';
 import { useAuth } from '../../../contexts/AuthContext';
 import storageService from '../../../services/storageService';
-import toast from 'react-hot-toast';
 import { getBestKnownCity, setStoredCity } from '../../../utils/cityPrefill';
+import {
+  buildSharedProfileFromUser,
+  getStoredSharedProfile,
+  mergeStoredSharedProfile
+} from '../../../utils/sharedProfilePrefill';
+
+const buildSyncedProfileSeed = (userProfile, user) => {
+  const storedProfile = getStoredSharedProfile();
+  const accountProfile = buildSharedProfileFromUser({ userProfile, user });
+  const city = getBestKnownCity(accountProfile?.city, storedProfile?.city);
+
+  return {
+    first_name: accountProfile?.firstName || storedProfile?.firstName || '',
+    last_name: accountProfile?.lastName || storedProfile?.lastName || '',
+    pseudo: accountProfile?.pseudonym || storedProfile?.pseudonym || '',
+    email: accountProfile?.email || storedProfile?.email || '',
+    phone: accountProfile?.phone || storedProfile?.phone || '',
+    birth_date: accountProfile?.birthDate || storedProfile?.birthDate || '',
+    address: accountProfile?.addressLine1 || storedProfile?.addressLine1 || '',
+    city,
+    postal_code: accountProfile?.postalCode || storedProfile?.postalCode || ''
+  };
+};
 
 const ProfileTab = () => {
   const navigate = useNavigate();
@@ -21,56 +45,74 @@ const ProfileTab = () => {
     pseudo: '',
     email: '',
     phone: '',
+    birth_date: '',
     address: '',
     city: '',
     postal_code: ''
   });
 
   useEffect(() => {
-    if (userProfile) {
-      const bestKnownCity = getBestKnownCity(userProfile?.city);
-      if (bestKnownCity) {
-        setStoredCity(bestKnownCity);
-      }
+    if (!userProfile) return;
 
-      setFormData({
-        first_name: userProfile?.first_name || userProfile?.prenom || user?.user_metadata?.first_name || user?.user_metadata?.prenom || '',
-        last_name: userProfile?.last_name || userProfile?.nom || user?.user_metadata?.last_name || user?.user_metadata?.nom || '',
-        pseudo: userProfile?.pseudo || '',
-        email: userProfile?.email || '',
-        phone: userProfile?.phone || '',
-        address: userProfile?.address || '',
-        city: bestKnownCity || '',
-        postal_code: userProfile?.postal_code || ''
-      });
+    const nextFormData = buildSyncedProfileSeed(userProfile, user);
+    if (nextFormData?.city) {
+      setStoredCity(nextFormData.city);
     }
-  }, [userProfile]);
 
-  const handleInputChange = (e) => {
-    const { name, value } = e?.target;
+    mergeStoredSharedProfile({
+      firstName: nextFormData?.first_name,
+      lastName: nextFormData?.last_name,
+      pseudonym: nextFormData?.pseudo,
+      email: nextFormData?.email,
+      phone: nextFormData?.phone,
+      birthDate: nextFormData?.birth_date,
+      addressLine1: nextFormData?.address,
+      postalCode: nextFormData?.postal_code,
+      city: nextFormData?.city
+    });
+
+    setFormData(nextFormData);
+  }, [user, userProfile]);
+
+  const handleInputChange = (event) => {
+    const { name, value } = event?.target || {};
+
     if (name === 'city') {
       setStoredCity(value);
     }
 
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
       [name]: value
     }));
   };
 
-  const handleAvatarUpload = async (e) => {
-    const file = e?.target?.files?.[0];
+  const handleCityChange = (value) => {
+    setStoredCity(value);
+    setFormData((prev) => ({
+      ...prev,
+      city: value
+    }));
+  };
+
+  const handlePostalCodeChange = (value) => {
+    setFormData((prev) => ({
+      ...prev,
+      postal_code: value
+    }));
+  };
+
+  const handleAvatarUpload = async (event) => {
+    const file = event?.target?.files?.[0];
     if (!file) return;
 
-    // Validate file type
     if (!file?.type?.startsWith('image/')) {
       toast?.error('Veuillez sélectionner une image');
       return;
     }
 
-    // Validate file size (max 2MB)
     if (file?.size > 2 * 1024 * 1024) {
-      toast?.error('L\'image ne doit pas dépasser 2 Mo');
+      toast?.error("L'image ne doit pas dépasser 2 Mo");
       return;
     }
 
@@ -79,14 +121,13 @@ const ProfileTab = () => {
       const { data, error } = await storageService?.uploadAvatar(file, user?.id);
       if (error) throw error;
 
-      // Update profile with new avatar URL
       const { error: updateError } = await updateProfile({ avatar_url: data?.url });
       if (updateError) throw updateError;
 
       toast?.success('Photo de profil mise à jour');
       refreshProfile();
     } catch (error) {
-      console.error('Erreur de téléversement de l\'avatar :', error);
+      console.error("Erreur de téléversement de l'avatar:", error);
       toast?.error('Erreur lors du téléchargement');
     } finally {
       setUploading(false);
@@ -98,26 +139,29 @@ const ProfileTab = () => {
       const { error } = await updateProfile(formData);
       if (error) throw error;
 
+      mergeStoredSharedProfile({
+        firstName: formData?.first_name,
+        lastName: formData?.last_name,
+        pseudonym: formData?.pseudo,
+        email: formData?.email,
+        phone: formData?.phone,
+        birthDate: formData?.birth_date,
+        addressLine1: formData?.address,
+        postalCode: formData?.postal_code,
+        city: formData?.city
+      });
+
       toast?.success('Profil mis à jour avec succès');
       setIsEditing(false);
       refreshProfile();
     } catch (error) {
-      console.error('Erreur de mise à jour du profil :', error);
+      console.error('Erreur de mise à jour du profil:', error);
       toast?.error('Erreur lors de la mise à jour');
     }
   };
 
   const handleCancel = () => {
-    setFormData({
-      pseudo: userProfile?.pseudo || '',
-      first_name: userProfile?.first_name || userProfile?.prenom || user?.user_metadata?.first_name || user?.user_metadata?.prenom || '',
-      last_name: userProfile?.last_name || userProfile?.nom || user?.user_metadata?.last_name || user?.user_metadata?.nom || '',
-      email: userProfile?.email || '',
-      phone: userProfile?.phone || '',
-      address: userProfile?.address || '',
-      city: userProfile?.city || '',
-      postal_code: userProfile?.postal_code || ''
-    });
+    setFormData(buildSyncedProfileSeed(userProfile, user));
     setIsEditing(false);
   };
 
@@ -145,7 +189,7 @@ const ProfileTab = () => {
       toast?.success('Compte supprimé avec succès');
       navigate('/accueil-recherche', { replace: true });
     } catch (error) {
-      console.error('Erreur suppression compte :', error);
+      console.error('Erreur suppression compte:', error);
       toast?.error('Suppression du compte impossible');
     } finally {
       setDeletingAccount(false);
@@ -154,11 +198,11 @@ const ProfileTab = () => {
 
   const profileFirstName = String(
     userProfile?.first_name || userProfile?.prenom || user?.user_metadata?.first_name || user?.user_metadata?.prenom || ''
-  )?.trim();
+  ).trim();
   const profileLastName = String(
     userProfile?.last_name || userProfile?.nom || user?.user_metadata?.last_name || user?.user_metadata?.nom || ''
-  )?.trim();
-  const displayFullName = [profileFirstName, profileLastName]?.filter(Boolean)?.join(' ');
+  ).trim();
+  const displayFullName = [profileFirstName, profileLastName].filter(Boolean).join(' ');
 
   return (
     <div className="space-y-6 md:space-y-8">
@@ -255,7 +299,7 @@ const ProfileTab = () => {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
           <Input
-            label="Prénom"
+            label="Prenom"
             type="text"
             name="first_name"
             value={formData?.first_name}
@@ -290,13 +334,21 @@ const ProfileTab = () => {
             required
           />
           <Input
-            label="Téléphone"
+            label="Telephone"
             type="tel"
             name="phone"
             value={formData?.phone}
             onChange={handleInputChange}
             disabled={!isEditing}
             required
+          />
+          <Input
+            label="Date de naissance"
+            type="date"
+            name="birth_date"
+            value={formData?.birth_date}
+            onChange={handleInputChange}
+            disabled={!isEditing}
           />
           <Input
             label="Adresse"
@@ -307,21 +359,15 @@ const ProfileTab = () => {
             disabled={!isEditing}
             className="md:col-span-2"
           />
-          <Input
-            label="Ville"
-            type="text"
-            name="city"
-            value={formData?.city}
-            onChange={handleInputChange}
-            autoComplete="address-level2"
-            disabled={!isEditing}
-          />
-          <Input
-            label="Code postal"
-            type="text"
-            name="postal_code"
-            value={formData?.postal_code}
-            onChange={handleInputChange}
+          <CommuneAutocompleteFields
+            className="md:col-span-2"
+            fieldsClassName="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 items-start"
+            cityValue={formData?.city}
+            postalCodeValue={formData?.postal_code}
+            onCityChange={handleCityChange}
+            onPostalCodeChange={handlePostalCodeChange}
+            cityName="city"
+            postalCodeName="postal_code"
             disabled={!isEditing}
           />
         </div>

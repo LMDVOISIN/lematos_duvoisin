@@ -1,14 +1,54 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Icon from '../../../components/AppIcon';
 import Button from '../../../components/ui/Button';
 import demandeService from '../../../services/demandeService';
 import matchingService from '../../../services/matchingService';
 import { useAuth } from '../../../contexts/AuthContext';
+import {
+  appendAdminVerificationParamsToPath,
+  isAdminVerificationScenario
+} from '../../../utils/adminVerificationContext';
+
+const VERIFICATION_DEMAND = {
+  id: 'verification-demand',
+  titre: 'Besoin d une perceuse pour verification',
+  description: 'Demande de verification admin avec acceptation ou refus de proposition.',
+  statut: 'open',
+  categorie_slug: 'Bricolage',
+  ville: 'Paris',
+  rayon_km: 10,
+  prix_max: 25,
+  dispo_de: '2026-04-02',
+  dispo_a: '2026-04-03',
+  created_at: '2026-03-27T09:00:00.000Z'
+};
+
+const VERIFICATION_PROPOSAL = {
+  id: 'verification-proposal',
+  status: 'sent',
+  note: 'Proposition de verification prete a partir vers le paiement.',
+  match_score: 96,
+  offer_id: 'verification-offer',
+  offer: {
+    id: 'verification-offer',
+    titre: 'Perceuse de verification admin',
+    ville: 'Paris',
+    prix_jour: 19
+  },
+  proposer: {
+    pseudo: 'atelier_verification'
+  },
+  demand: {
+    dispo_de: '2026-04-02',
+    dispo_a: '2026-04-03'
+  }
+};
 
 const DemandesTab = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const isVerificationProposalScenario = isAdminVerificationScenario('owner_requester_proposals_to_payment');
   const [demandes, setDemandes] = useState([]);
   const [proposals, setProposals] = useState({});
   const [loading, setLoading] = useState(true);
@@ -25,18 +65,48 @@ const DemandesTab = () => {
   const loadDemandes = async () => {
     setLoading(true);
     try {
-      const { data } = await demandeService?.getUserDemandes(user?.id);
-      setDemandes(data || []);
+      if (isVerificationProposalScenario) {
+        setDemandes([VERIFICATION_DEMAND]);
+        setProposals({
+          [VERIFICATION_DEMAND.id]: [VERIFICATION_PROPOSAL]
+        });
+        return;
+      }
+
+      const { data } = await demandeService.getUserDemandes(user.id);
+      const nextDemandes = (data || []);
       
       // Load proposals for each demand
       const proposalsMap = {};
-      for (const demand of data || []) {
-        const { data: props } = await matchingService?.getProposalsForDemand(demand?.id);
-        proposalsMap[demand?.id] = props || [];
+      for (const demand of nextDemandes) {
+        const { data: props } = await matchingService.getProposalsForDemand(demand.id);
+        proposalsMap[demand.id] = props || [];
       }
+
+      if (isVerificationProposalScenario) {
+        const hasActionableProposal = Object.values(proposalsMap || {})
+          ?.some((entries) => Array.isArray(entries) && entries?.some((entry) => entry?.status === 'sent'));
+
+        if (!hasActionableProposal) {
+          setDemandes([VERIFICATION_DEMAND, ...nextDemandes]);
+          setProposals({
+            ...proposalsMap,
+            [VERIFICATION_DEMAND.id]: [VERIFICATION_PROPOSAL]
+          });
+          return;
+        }
+      }
+
+      setDemandes(nextDemandes);
       setProposals(proposalsMap);
     } catch (error) {
       console.error('Erreur lors du chargement de demandes:', error);
+      if (isVerificationProposalScenario) {
+        setDemandes([VERIFICATION_DEMAND]);
+        setProposals({
+          [VERIFICATION_DEMAND.id]: [VERIFICATION_PROPOSAL]
+        });
+      }
     } finally {
       setLoading(false);
     }
@@ -44,20 +114,52 @@ const DemandesTab = () => {
 
   const handleViewProposals = async (demandId) => {
     setSelectedDemand(demandId);
-    const { data } = await matchingService?.getProposalsForDemand(demandId);
+
+    if (isVerificationProposalScenario && demandId === VERIFICATION_DEMAND.id) {
+      setDemandProposals(proposals?.[VERIFICATION_DEMAND.id] || [VERIFICATION_PROPOSAL]);
+      return;
+    }
+
+    const { data } = await matchingService.getProposalsForDemand(demandId);
     setDemandProposals(data || []);
   };
 
   const handleAcceptProposal = async (proposalId) => {
-    if (!confirm('Accepter cette proposition ? Une réservation sera créée automatiquement.')) {
+    if (isVerificationProposalScenario && proposalId === VERIFICATION_PROPOSAL.id) {
+      navigate(
+        appendAdminVerificationParamsToPath(
+          '/traitement-paiement?annonceId=verification-offer&startDate=2026-04-02&endDate=2026-04-03&proposalId=verification-proposal',
+          { verificationId: 'owner_requester_proposals_to_payment' }
+        )
+      );
+      return;
+    }
+
+    const confirmed = confirm("Accepter cette proposition et continuer vers le paiement ? La réservation ne sera créée qu'après paiement confirmé.");
+    if (!confirmed) {
       return;
     }
 
     try {
-      await matchingService?.acceptProposal(proposalId);
-      alert('Proposition acceptée ! Une réservation a été créée.');
-      loadDemandes();
-      setSelectedDemand(null);
+      const { data: proposal, error } = await matchingService.acceptProposal(proposalId);
+      if (error) throw error;
+
+      const params = new URLSearchParams();
+      if (proposal.offer_id != null) {
+        params.set('annonceId', String(proposal.offer_id));
+      }
+      if (proposal.demand.dispo_de) {
+        params.set('startDate', String(proposal.demand.dispo_de));
+      }
+      if (proposal.demand.dispo_a) {
+        params.set('endDate', String(proposal.demand.dispo_a));
+      }
+      if (proposal.id != null) {
+        params.set('proposalId', String(proposal.id));
+      }
+
+      navigate(`/traitement-paiement?${params.toString()}`);
+      return;
     } catch (error) {
       console.error("Erreur lors de l'acceptation de la proposition :", error);
       alert('Erreur lors de l\'acceptation de la proposition');
@@ -65,12 +167,24 @@ const DemandesTab = () => {
   };
 
   const handleDeclineProposal = async (proposalId) => {
+    if (isVerificationProposalScenario && proposalId === VERIFICATION_PROPOSAL.id) {
+      const declinedProposal = {
+        ...VERIFICATION_PROPOSAL,
+        status: 'declined'
+      };
+      setProposals({
+        [VERIFICATION_DEMAND.id]: [declinedProposal]
+      });
+      setDemandProposals([declinedProposal]);
+      return;
+    }
+
     if (!confirm('Refuser cette proposition ?')) {
       return;
     }
 
     try {
-      await matchingService?.declineProposal(proposalId);
+      await matchingService.declineProposal(proposalId);
       alert('Proposition refusée');
       loadDemandes();
       handleViewProposals(selectedDemand);
@@ -86,7 +200,7 @@ const DemandesTab = () => {
     }
 
     try {
-      await demandeService?.closeDemande(demandeId);
+      await demandeService.closeDemande(demandeId);
       loadDemandes();
       alert('Demande clôturée avec succès');
     } catch (error) {
@@ -101,7 +215,7 @@ const DemandesTab = () => {
     }
 
     try {
-      await demandeService?.deleteDemande(demandeId);
+      await demandeService.deleteDemande(demandeId);
       loadDemandes();
       alert('Demande supprimée avec succès');
     } catch (error) {
@@ -112,7 +226,7 @@ const DemandesTab = () => {
 
   const formatDate = (dateString) => {
     if (!dateString) return '';
-    return new Date(dateString)?.toLocaleDateString('fr-FR', {
+    return new Date(dateString).toLocaleDateString('fr-FR', {
       day: 'numeric',
       month: 'short',
       year: 'numeric'
@@ -138,10 +252,19 @@ const DemandesTab = () => {
       );
     }
 
-    if (statut === 'open') {
+    if (statut === 'open' && moderationStatus === 'approved') {
       return (
         <span className="inline-flex items-center gap-1 px-2 py-1 bg-success/10 text-success text-xs rounded-full">
           <Icon name="CheckCircle" size={12} />
+          Publiée
+        </span>
+      );
+    }
+
+    if (statut === 'open') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-1 bg-[#17a2b8]/10 text-[#17a2b8] text-xs rounded-full">
+          <Icon name="Circle" size={12} />
           Ouverte
         </span>
       );
@@ -166,20 +289,20 @@ const DemandesTab = () => {
       declined: { label: 'Refusée', color: 'bg-danger/10 text-danger', icon: 'XCircle' }
     };
 
-    const config = statusConfig?.[status] || statusConfig?.sent;
+    const config = statusConfig[status] || statusConfig.sent;
 
     return (
-      <span className={`inline-flex items-center gap-1 px-2 py-1 ${config?.color} text-xs rounded-full`}>
-        <Icon name={config?.icon} size={12} />
-        {config?.label}
+      <span className={`inline-flex items-center gap-1 px-2 py-1 ${config.color} text-xs rounded-full`}>
+        <Icon name={config.icon} size={12} />
+        {config.label}
       </span>
     );
   };
 
-  const filteredDemandes = demandes?.filter((d) => {
+  const filteredDemandes = demandes.filter((d) => {
     if (filter === 'all') return true;
-    if (filter === 'open') return d?.statut === 'open';
-    if (filter === 'closed') return d?.statut === 'closed';
+    if (filter === 'open') return d.statut === 'open';
+    if (filter === 'closed') return d.statut === 'closed';
     return true;
   });
 
@@ -205,7 +328,7 @@ const DemandesTab = () => {
 
         <h2 className="text-xl font-bold text-foreground mb-4">Propositions reçues</h2>
 
-        {demandProposals?.length === 0 ? (
+        {demandProposals.length === 0 ? (
           <div className="bg-white rounded-lg shadow-elevation-1 p-12 text-center">
             <Icon name="Inbox" size={48} className="mx-auto text-muted-foreground mb-4" />
             <h3 className="text-lg font-semibold text-foreground mb-2">Aucune proposition</h3>
@@ -213,53 +336,53 @@ const DemandesTab = () => {
           </div>
         ) : (
           <div className="space-y-4">
-            {demandProposals?.map((proposal) => (
-              <div key={proposal?.id} className="bg-white rounded-lg shadow-elevation-1 p-6">
+            {demandProposals.map((proposal) => (
+              <div key={proposal.id} className="bg-white rounded-lg shadow-elevation-1 p-6">
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex-1">
                     <h3 className="text-lg font-semibold text-foreground mb-2">
-                      {proposal?.offer?.titre}
+                      {proposal.offer.titre}
                     </h3>
-                    {getProposalStatusBadge(proposal?.status)}
+                    {getProposalStatusBadge(proposal.status)}
                   </div>
-                  {proposal?.match_score && (
+                  {proposal.match_score && (
                     <span className="px-3 py-1 bg-success/10 text-success text-sm rounded-full font-semibold">
-                      {Math.round(proposal?.match_score)}% match
+                      {Math.round(proposal.match_score)}% match
                     </span>
                   )}
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                  {proposal?.offer?.ville && (
+                  {proposal.offer.ville && (
                     <div className="flex items-center gap-2 text-sm">
                       <Icon name="MapPin" size={16} className="text-muted-foreground" />
-                      <span className="text-foreground">{proposal?.offer?.ville}</span>
+                      <span className="text-foreground">{proposal.offer.ville}</span>
                     </div>
                   )}
-                  {proposal?.offer?.prix_jour && (
+                  {proposal.offer.prix_jour && (
                     <div className="flex items-center gap-2 text-sm">
                       <Icon name="DollarSign" size={16} className="text-muted-foreground" />
-                      <span className="text-foreground">{proposal?.offer?.prix_jour}€/jour</span>
+                      <span className="text-foreground">{proposal.offer.prix_jour}€/jour</span>
                     </div>
                   )}
-                  {proposal?.proposer && (
+                  {proposal.proposer && (
                     <div className="flex items-center gap-2 text-sm">
                       <Icon name="User" size={16} className="text-muted-foreground" />
-                      <span className="text-foreground">{proposal?.proposer?.pseudo}</span>
+                      <span className="text-foreground">{proposal.proposer.pseudo}</span>
                     </div>
                   )}
                 </div>
 
-                {proposal?.note && (
+                {proposal.note && (
                   <p className="text-sm text-muted-foreground mb-4 p-3 bg-surface rounded">
-                    {proposal?.note}
+                    {proposal.note}
                   </p>
                 )}
 
-                {proposal?.status === 'sent' && (
+                {proposal.status === 'sent' && (
                   <div className="flex gap-2 pt-4 border-t border-border">
                     <Button
-                      onClick={() => handleAcceptProposal(proposal?.id)}
+                      onClick={() => handleAcceptProposal(proposal.id)}
                       className="flex-1 flex items-center justify-center gap-2"
                     >
                       <Icon name="CheckCircle" size={18} />
@@ -267,7 +390,7 @@ const DemandesTab = () => {
                     </Button>
                     <Button
                       variant="outline"
-                      onClick={() => handleDeclineProposal(proposal?.id)}
+                      onClick={() => handleDeclineProposal(proposal.id)}
                       className="flex-1 flex items-center justify-center gap-2"
                     >
                       <Icon name="XCircle" size={18} />
@@ -288,8 +411,8 @@ const DemandesTab = () => {
       {/* En-tête */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
         <div>
-          <h2 className="text-xl font-bold text-foreground mb-1">Mes demandes</h2>
-          <p className="text-sm text-muted-foreground">Gérez vos demandes d'équipement</p>
+          <h2 className="text-xl font-bold text-foreground mb-1">Demandes de location</h2>
+          <p className="text-sm text-muted-foreground">Gérez ici vos annonces de demande</p>
         </div>
         <Button onClick={() => navigate('/creer-demande')} className="flex items-center gap-2">
           <Icon name="Plus" size={18} />
@@ -301,35 +424,37 @@ const DemandesTab = () => {
         <button
           onClick={() => setFilter('all')}
           className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
-            filter === 'all' ?'bg-primary text-white' :'bg-white text-foreground border border-border hover:bg-surface'
+            filter === 'all' ? 'bg-primary text-white' : 'bg-white text-foreground border border-border hover:bg-surface'
           }`}
         >
-          Toutes ({demandes?.length || 0})
+          Toutes ({demandes.length || 0})
         </button>
         <button
           onClick={() => setFilter('open')}
           className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
-            filter === 'open' ?'bg-primary text-white' :'bg-white text-foreground border border-border hover:bg-surface'
+            filter === 'open' ? 'bg-primary text-white' : 'bg-white text-foreground border border-border hover:bg-surface'
           }`}
         >
-          Ouvertes ({demandes?.filter((d) => d?.statut === 'open')?.length || 0})
+          Ouvertes ({demandes.filter((d) => d.statut === 'open').length || 0})
         </button>
         <button
           onClick={() => setFilter('closed')}
           className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
-            filter === 'closed' ?'bg-primary text-white' :'bg-white text-foreground border border-border hover:bg-surface'
+            filter === 'closed' ? 'bg-primary text-white' : 'bg-white text-foreground border border-border hover:bg-surface'
           }`}
         >
-          Clôturées ({demandes?.filter((d) => d?.statut === 'closed')?.length || 0})
+          Clôturées ({demandes.filter((d) => d.statut === 'closed').length || 0})
         </button>
       </div>
       {/* Liste des demandes */}
-      {filteredDemandes?.length === 0 ? (
+      {filteredDemandes.length === 0 ? (
         <div className="bg-white rounded-lg shadow-elevation-1 p-12 text-center">
           <Icon name="Search" size={48} className="mx-auto text-muted-foreground mb-4" />
           <h3 className="text-lg font-semibold text-foreground mb-2">Aucune demande</h3>
           <p className="text-muted-foreground mb-4">
-            {filter === 'all' ? "Vous n'avez pas encore créé de demande" : `Vous n'avez aucune demande ${filter === 'open' ? 'ouverte' : 'clôturée'}`}
+            {filter === 'all'
+              ? "Vous n'avez pas encore créé de demande"
+              : `Vous n'avez aucune demande ${filter === 'open' ? 'ouverte' : 'clôturée'}`}
           </p>
           <Button onClick={() => navigate('/creer-demande')}>
             <Icon name="Plus" size={18} className="mr-2" />
@@ -338,23 +463,34 @@ const DemandesTab = () => {
         </div>
       ) : (
         <div className="space-y-4">
-          {filteredDemandes?.map((demande) => (
-            <div key={demande?.id} className="bg-white rounded-lg shadow-elevation-1 p-4 md:p-6">
+          {filteredDemandes.map((demande) => (
+            <div key={demande.id} className="overflow-hidden bg-white rounded-lg shadow-elevation-1">
+              {demande?.library_image?.public_url ? (
+                <div className="aspect-[5/2] bg-slate-100">
+                  <img
+                    src={demande?.library_image?.public_url}
+                    alt={demande?.library_image?.alt_text || demande?.library_image?.title || demande?.titre || 'Illustration de demande'}
+                    className="h-full w-full object-cover"
+                  />
+                </div>
+              ) : null}
+
+              <div className="p-4 md:p-6">
               {/* En-tête */}
               <div className="flex items-start justify-between mb-4">
                 <div className="flex-1">
-                  <h3 className="text-lg font-semibold text-foreground mb-2">{demande?.titre}</h3>
+                  <h3 className="text-lg font-semibold text-foreground mb-2">{demande.titre}</h3>
                   <div className="flex flex-wrap items-center gap-2">
-                    {getStatusBadge(demande?.statut, demande?.moderation_status)}
-                    {demande?.categorie_slug && (
+                    {getStatusBadge(demande.statut, demande.moderation_status)}
+                    {demande.categorie_slug && (
                       <span className="inline-block px-2 py-1 bg-primary/10 text-primary text-xs rounded">
-                        {demande?.categorie_slug}
+                        {demande.categorie_slug}
                       </span>
                     )}
-                    {proposals?.[demande?.id]?.length > 0 && (
+                    {(proposals?.[demande.id]?.length || 0) > 0 && (
                       <span className="inline-flex items-center gap-1 px-2 py-1 bg-[#17a2b8]/10 text-[#17a2b8] text-xs rounded-full">
                         <Icon name="Mail" size={12} />
-                        {proposals?.[demande?.id]?.length} proposition{proposals?.[demande?.id]?.length > 1 ? 's' : ''}
+                        {proposals?.[demande.id]?.length || 0} proposition{(proposals?.[demande.id]?.length || 0) > 1 ? 's' : ''}
                       </span>
                     )}
                   </div>
@@ -362,59 +498,59 @@ const DemandesTab = () => {
               </div>
 
               {/* Description */}
-              <p className="text-sm text-muted-foreground mb-4 line-clamp-2">{demande?.description}</p>
+              <p className="text-sm text-muted-foreground mb-4 line-clamp-2">{demande.description}</p>
 
               {/* Details */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-                {demande?.ville && (
+                {demande.ville && (
                   <div className="flex items-center gap-2 text-sm">
                     <Icon name="MapPin" size={16} className="text-muted-foreground" />
                     <span className="text-foreground">
-                      {demande?.ville} ({demande?.rayon_km} km)
+                      {demande.ville} ({demande.rayon_km} km)
                     </span>
                   </div>
                 )}
 
-                {demande?.prix_max && (
+                {demande.prix_max && (
                   <div className="flex items-center gap-2 text-sm">
                     <Icon name="DollarSign" size={16} className="text-muted-foreground" />
-                    <span className="text-foreground">Max: {demande?.prix_max}€/jour</span>
+                    <span className="text-foreground">Max: {demande.prix_max}€/jour</span>
                   </div>
                 )}
 
-                {demande?.dispo_de && demande?.dispo_a && (
+                {demande.dispo_de && demande.dispo_a && (
                   <div className="flex items-center gap-2 text-sm">
                     <Icon name="Calendar" size={16} className="text-muted-foreground" />
                     <span className="text-foreground">
-                      {formatDate(demande?.dispo_de)} - {formatDate(demande?.dispo_a)}
+                      {formatDate(demande.dispo_de)} - {formatDate(demande.dispo_a)}
                     </span>
                   </div>
                 )}
 
                 <div className="flex items-center gap-2 text-sm">
                   <Icon name="Clock" size={16} className="text-muted-foreground" />
-                  <span className="text-foreground">Créée le {formatDate(demande?.created_at)}</span>
+                  <span className="text-foreground">Créée le {formatDate(demande.created_at)}</span>
                 </div>
               </div>
 
               {/* Actions */}
               <div className="flex flex-wrap gap-2 pt-4 border-t border-border">
-                {proposals?.[demande?.id]?.length > 0 && (
+                {(proposals?.[demande.id]?.length || 0) > 0 && (
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => handleViewProposals(demande?.id)}
+                    onClick={() => handleViewProposals(demande.id)}
                     className="flex items-center gap-2"
                   >
                     <Icon name="Eye" size={16} />
-                    Voir les propositions ({proposals?.[demande?.id]?.length})
+                    Voir les propositions ({proposals?.[demande.id]?.length || 0})
                   </Button>
                 )}
-                {demande?.statut === 'open' && demande?.moderation_status === 'approved' && (
+                {demande.statut === 'open' && demande.moderation_status === 'approved' && (
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => handleCloseDemande(demande?.id)}
+                    onClick={() => handleCloseDemande(demande.id)}
                     className="flex items-center gap-2"
                   >
                     <Icon name="Lock" size={16} />
@@ -424,12 +560,13 @@ const DemandesTab = () => {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => handleDeleteDemande(demande?.id)}
+                  onClick={() => handleDeleteDemande(demande.id)}
                   className="flex items-center gap-2 text-danger hover:bg-danger/10"
                 >
                   <Icon name="Trash2" size={16} />
                   Supprimer
                 </Button>
+              </div>
               </div>
             </div>
           ))}
@@ -440,5 +577,6 @@ const DemandesTab = () => {
 };
 
 export default DemandesTab;
+
 
 

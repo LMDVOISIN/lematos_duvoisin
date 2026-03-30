@@ -1,14 +1,23 @@
 ﻿import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useRef } from 'react';
+import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
 import annonceService from '../../services/annonceService';
+import demandeService from '../../services/demandeService';
 import storageService from '../../services/storageService';
+import userTestingService from '../../services/userTestingService';
 import Icon from '../../components/AppIcon';
-import Header from '../../components/navigation/Header';
-import Footer from '../../components/Footer';
+import {
+  ActionCard,
+  ActionEmptyState,
+  ActionHero,
+  ActionPageShell
+} from '../../components/page/ActionPageLayout';
 import normaliserAnnonce from '../../utils/annonceNormalizer';
 import { construireUrlAnnonce } from '../../utils/listingUrl';
+import { testingScenarioNeedsReservationSetup } from '../../utils/testingScenarioBriefs';
+import DemandesTab from '../user-dashboard/components/DemandesTab';
 import {
   buildBrandedAnnonceHeroFile,
   extractAnnoncePhotoReferenceValue,
@@ -64,12 +73,14 @@ const shouldRegenerateAnnonceHero = (annonce) => {
 };
 
 const UserAnnonces = () => {
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, testerData } = useAuth();
   const navigate = useNavigate();
   const [annonces, setAnnonces] = useState([]);
+  const [demandesCount, setDemandesCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [togglingTemporaryDisabledById, setTogglingTemporaryDisabledById] = useState({});
+  const [activeTestSession, setActiveTestSession] = useState(null);
   const heroRefreshStartedRef = useRef(false);
   const heroRefreshInProgressRef = useRef(false);
 
@@ -82,25 +93,67 @@ const UserAnnonces = () => {
     fetchUserAnnonces();
   }, [isAuthenticated, user]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadActiveTestSession = async () => {
+      if (!testerData?.id) {
+        setActiveTestSession(null);
+        return;
+      }
+
+      const { data, error: sessionError } = await userTestingService?.getCurrentSession(testerData?.id);
+      if (cancelled) return;
+
+      if (sessionError) {
+        console.error('Impossible de charger la session de test active :', sessionError);
+        setActiveTestSession(null);
+        return;
+      }
+
+      setActiveTestSession(data || null);
+    };
+
+    loadActiveTestSession();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [testerData?.id]);
+
   const fetchUserAnnonces = async () => {
     if (!user?.id) return;
 
     try {
       setLoading(true);
       setError(null);
-      const { data, error: fetchError } = await annonceService?.getUserAnnonces(user?.id);
+      const [
+        { data: annoncesData, error: fetchError },
+        { data: demandesTotal, error: demandesError }
+      ] = await Promise.all([
+        annonceService?.getUserAnnonces(user?.id),
+        demandeService?.getUserDemandeCount(user?.id)
+      ]);
 
       if (fetchError) {
         setError('Erreur lors du chargement de vos annonces');
         console.error('Fetch annonces error:', fetchError);
       } else {
         heroRefreshStartedRef.current = false;
-        const annoncesNormalisees = (data || [])?.map((annonce) => normaliserAnnonce(annonce));
+        const annoncesNormalisees = (annoncesData || [])?.map((annonce) => normaliserAnnonce(annonce));
         setAnnonces(annoncesNormalisees);
+      }
+
+      if (demandesError) {
+        console.error('Fetch demandes count error:', demandesError);
+        setDemandesCount(0);
+      } else {
+        setDemandesCount(Number(demandesTotal || 0));
       }
     } catch (err) {
       setError('Une erreur est survenue');
       console.error('Fetch error:', err);
+      setDemandesCount(0);
     } finally {
       setLoading(false);
     }
@@ -218,7 +271,7 @@ const UserAnnonces = () => {
   }, [annonces, user?.id]);
 
   const handleDelete = async (annonceId) => {
-    if (!window.confirm('Etes-vous sur de vouloir supprimer cette annonce ?')) {
+    if (!window.confirm('Êtes-vous sûr de vouloir supprimer cette annonce ?')) {
       return;
     }
 
@@ -258,7 +311,7 @@ const UserAnnonces = () => {
       });
 
       if (updateError) {
-        alert('Erreur lors de la mise ? jour de la visibilite');
+        alert('Erreur lors de la mise à jour de la visibilité');
         console.error('Toggle temporary disable error:', updateError);
         return;
       }
@@ -312,67 +365,251 @@ const UserAnnonces = () => {
     );
   };
 
+  const activeReferenceContext =
+    activeTestSession?.runtimeState?.referenceContext
+    || activeTestSession?.runtimeState?.reference_context
+    || {};
+  const selectedTestListings = Array.isArray(activeReferenceContext?.listings)
+    ? activeReferenceContext.listings
+    : [];
+  const isReferencePreparationSession = (
+    String(activeTestSession?.runtimeState?.sessionRole || activeTestSession?.runtimeState?.session_role || '').trim() === 'reference'
+    && testingScenarioNeedsReservationSetup(activeTestSession?.scenario || {})
+  );
+  const publishedTestListings = (annonces || []).filter((annonce) => (
+    (String(annonce?.statut || '').toLowerCase() === 'publiee'
+      || String(annonce?.statut || '').toLowerCase() === 'published'
+      || Boolean(annonce?.published))
+    && !Boolean(annonce?.temporarily_disabled ?? annonce?.temporarilyDisabled)
+  ));
+
+  const annonceStats = [
+    {
+      label: 'Publiees',
+      value: (annonces || [])?.filter((annonce) => normalizeAnnonceStatusForUserView(annonce) === 'publiee')?.length,
+      icon: 'BadgeCheck',
+      tone: 'mint'
+    },
+    {
+      label: 'En attente',
+      value: (annonces || [])?.filter((annonce) => normalizeAnnonceStatusForUserView(annonce) === 'en_attente')?.length,
+      icon: 'Clock3',
+      tone: 'warm'
+    },
+    {
+      label: 'Masquees',
+      value: (annonces || [])?.filter((annonce) => isAnnonceTemporarilyDisabled(annonce))?.length,
+      icon: 'EyeOff',
+      tone: 'slate'
+    },
+    {
+      label: 'Demandes',
+      value: demandesCount,
+      icon: 'FileSearch',
+      tone: 'sky'
+    }
+  ];
+
+  const hasDemandes = demandesCount > 0;
+
+  const isAnnonceAlreadySelectedForTest = (annonce) => {
+    const annonceId = String(annonce?.id || '').trim();
+    if (!annonceId) return false;
+
+    if (String(activeReferenceContext?.listingId || '').trim() === annonceId) {
+      return true;
+    }
+
+    return selectedTestListings.some((listing) => String(
+      listing?.listingId
+      || listing?.id
+      || ''
+    ).trim() === annonceId);
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const syncReferenceTestListings = async () => {
+      if (!isReferencePreparationSession || !activeTestSession?.id || !user?.id) {
+        return;
+      }
+
+      const currentListingIds = selectedTestListings
+        .map((listing) => String(listing?.listingId || listing?.id || '').trim())
+        .filter(Boolean)
+        .sort();
+      const publishedListingIds = publishedTestListings
+        .map((annonce) => String(annonce?.id || '').trim())
+        .filter(Boolean)
+        .sort();
+
+      if (currentListingIds.join('|') === publishedListingIds.join('|')) {
+        return;
+      }
+
+      try {
+        const { data, error: syncError } = await annonceService?.syncUserAnnoncesForReferenceTest({
+          sessionId: activeTestSession?.id,
+          userId: user?.id,
+          ownerEmail: user?.email || '',
+          existingContext: activeReferenceContext
+        });
+
+        if (syncError || cancelled) {
+          if (syncError) {
+            throw syncError;
+          }
+          return;
+        }
+
+        setActiveTestSession((previous) => (
+          previous
+            ? {
+                ...previous,
+                runtimeState: {
+                  ...(previous?.runtimeState || {}),
+                  referenceContext: data || activeReferenceContext
+                }
+              }
+            : previous
+        ));
+      } catch (syncError) {
+        console.error('Synchronisation automatique des annonces du test impossible :', syncError);
+      }
+    };
+
+    syncReferenceTestListings();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeReferenceContext,
+    activeTestSession?.id,
+    isReferencePreparationSession,
+    publishedTestListings,
+    selectedTestListings,
+    user?.email,
+    user?.id
+  ]);
+
   if (loading) {
     return (
-      <>
-        <Header />
-        <div className="min-h-screen app-page-gradient pt-24 pb-12">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex items-center justify-center py-20">
-              <div className="text-center">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
-                <p className="mt-4 text-muted-foreground">Chargement de vos annonces...</p>
-              </div>
-            </div>
+      <ActionPageShell
+        maxWidth="max-w-7xl"
+        hero={(
+          <ActionHero
+            eyebrow="Mes annonces"
+            title="Vous pilotez vos annonces ici"
+            subtitle="Offres, demandes, visibilite et actions directes restent au meme endroit."
+            tone="mint"
+          />
+        )}
+      >
+        <ActionCard className="py-20">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+            <p className="mt-4 text-muted-foreground">Chargement de vos annonces...</p>
           </div>
-        </div>
-        <Footer />
-      </>
+        </ActionCard>
+      </ActionPageShell>
     );
   }
 
   return (
-    <>
-      <Header />
-      <div className="min-h-screen app-page-gradient pt-24 pb-12">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold text-foreground">Mes Annonces</h1>
-            <p className="mt-2 text-muted-foreground">
-              Gérez vos annonces et suivez leur statut
-            </p>
-          </div>
+    <ActionPageShell
+      maxWidth="max-w-7xl"
+      hero={(
+        <ActionHero
+          eyebrow="Mes annonces"
+          title="Mes annonces"
+          subtitle="Vos offres et vos demandes restent sur la meme page."
+          stats={annonceStats}
+          tone="mint"
+        />
+      )}
+    >
+      <div className="space-y-6">
+
+          {isReferencePreparationSession && (
+            <ActionCard className="border border-blue-200 bg-blue-50 p-4">
+              <div className="flex items-start gap-3">
+                <Icon name="FlaskConical" size={20} className="text-blue-700 mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-blue-950">
+                    Session de référence active
+                  </p>
+                  <p className="mt-1 text-sm text-blue-900">
+                    Pendant ce test, vos annonces publiées de ce compte sont partagées automatiquement avec le locataire testeur.
+                    Vous n'avez rien à sélectionner.
+                  </p>
+                  <p className="mt-2 text-xs text-blue-800">
+                    {selectedTestListings.length > 0
+                      ? `${selectedTestListings.length} annonce(s) publiée(s) sont actuellement proposée(s) au miroir.`
+                      : publishedTestListings.length > 0
+                        ? 'Synchronisation en cours des annonces publiées pour ce test.'
+                      : 'Publiez au moins une annonce pour que le miroir puisse commencer ce test.'}
+                  </p>
+                </div>
+              </div>
+            </ActionCard>
+          )}
 
           {error && (
-            <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4">
+            <ActionCard className="border border-red-200 bg-red-50 p-4">
               <div className="flex items-center gap-2">
                 <Icon name="AlertCircle" size={20} className="text-red-600" />
                 <p className="text-red-800">{error}</p>
               </div>
-            </div>
+            </ActionCard>
           )}
 
-          {!loading && annonces?.length === 0 && (
-            <div className="bg-white rounded-lg shadow-sm border border-border p-12 text-center">
-              <div className="max-w-md mx-auto">
-                <div className="w-16 h-16 bg-surface rounded-full flex items-center justify-center mx-auto mb-4">
-                  <Icon name="Package" size={32} className="text-muted-foreground" />
+          {!loading && annonces?.length === 0 && !hasDemandes && (
+            <ActionEmptyState
+              icon="PackageOpen"
+              title="Vous n'avez pas encore d'annonces ni de demandes"
+              description="Commencez à partager votre matériel avec vos voisins."
+              action={(
+                <div className="flex flex-wrap justify-center gap-3">
+                  <Link
+                    to="/creer-annonce"
+                    className="inline-flex items-center gap-2 rounded-full bg-primary px-6 py-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+                  >
+                    <Icon name="Plus" size={18} />
+                    Créer une annonce
+                  </Link>
+                  <Link
+                    to="/creer-demande"
+                    className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-6 py-3 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+                  >
+                    <Icon name="FileSearch" size={18} />
+                    Créer une demande
+                  </Link>
                 </div>
-                <h2 className="text-xl font-semibold text-foreground mb-2">
-                  Vous n'avez pas encore d'annonces
-                </h2>
-                <p className="text-muted-foreground mb-6">
-                  Commencez à partager votre matériel avec vos voisins
-                </p>
+              )}
+            />
+          )}
+
+          {!loading && annonces?.length === 0 && hasDemandes && (
+            <ActionCard className="border border-slate-200 bg-slate-50/80">
+              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Vos offres</p>
+                  <h2 className="mt-1 text-2xl font-semibold text-slate-950">Aucune offre publiee pour l instant</h2>
+                  <p className="mt-2 text-sm text-slate-600">
+                    Vos demandes apparaissent plus bas sur cette page.
+                  </p>
+                </div>
                 <Link
                   to="/creer-annonce"
-                  className="inline-flex items-center gap-2 px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+                  className="inline-flex items-center justify-center gap-2 rounded-full bg-primary px-6 py-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
                 >
-                  <Icon name="Plus" size={20} />
+                  <Icon name="Plus" size={18} />
                   Créer une annonce
                 </Link>
               </div>
-            </div>
+            </ActionCard>
           )}
 
           {annonces?.length > 0 && (
@@ -440,6 +677,12 @@ const UserAnnonces = () => {
                       </div>
                     </div>
 
+                    {isReferencePreparationSession && isAnnonceAlreadySelectedForTest(annonce) && (
+                      <div className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800">
+                        Proposée automatiquement pour ce test
+                      </div>
+                    )}
+
                     <div className="flex gap-2">
                       <Link
                         to={construireUrlAnnonce(annonce)}
@@ -472,17 +715,23 @@ const UserAnnonces = () => {
             <div className="mt-8 text-center">
               <Link
                 to="/creer-annonce"
-                className="inline-flex items-center gap-2 px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+                className="inline-flex items-center gap-2 rounded-full bg-primary px-6 py-3 text-primary-foreground transition-colors hover:bg-primary/90"
               >
                 <Icon name="Plus" size={20} />
-                Creer une nouvelle annonce
+                Créer une nouvelle annonce
               </Link>
             </div>
           )}
-        </div>
+
+          {(annonces?.length > 0 || hasDemandes) && (
+            <section id="demandes" className="scroll-mt-32">
+              <ActionCard className="p-4 md:p-6">
+                <DemandesTab />
+              </ActionCard>
+            </section>
+          )}
       </div>
-      <Footer />
-    </>
+    </ActionPageShell>
   );
 };
 

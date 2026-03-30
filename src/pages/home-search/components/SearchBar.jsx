@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import Icon from '../../../components/AppIcon';
 import Button from '../../../components/ui/Button';
+import CommuneSearchInput from '../../../components/ui/CommuneSearchInput';
 import { getStoredCity, setStoredCity } from '../../../utils/cityPrefill';
 
 const SearchBar = ({
@@ -131,27 +132,19 @@ const SearchBar = ({
         </div>
 
         <div>
-          <label htmlFor="search-location" className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
-            Localisation
-          </label>
-          <div className="relative">
-            <Icon name="MapPin" size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              id="search-location"
-              type="text"
-              name="city"
-              placeholder="Ville ou code postal"
-              value={location}
-              onChange={(event) => {
-                const nextLocation = event?.target?.value;
-                setLocation(nextLocation);
-                setStoredCity(nextLocation);
-              }}
-              autoComplete="address-level2"
-              onKeyDown={handleKeyPress}
-              className={`${fieldClassName} pl-10`}
-            />
-          </div>
+          <CommuneSearchInput
+            label="Localisation"
+            name="city"
+            value={location}
+            placeholder="Ville ou code postal"
+            onChange={(nextLocation) => {
+              setLocation(nextLocation);
+              setStoredCity(nextLocation);
+            }}
+            rememberCity
+            onKeyDown={handleKeyPress}
+            inputClassName={fieldClassName}
+          />
         </div>
 
         <div className="flex items-end">

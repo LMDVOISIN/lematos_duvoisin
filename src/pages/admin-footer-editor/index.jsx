@@ -54,7 +54,7 @@ const AdminFooterEditor = () => {
       const { error } = await legalService?.updateLegalPage(FOOTER_SLUG, FOOTER_TITLE, serialized);
       if (error) throw error;
 
-      setStatusMessage('Pied de page enregistre avec succes');
+      setStatusMessage('Pied de page enregistré avec succès');
     } catch (error) {
       console.error('Erreur de sauvegarde footer:', error);
       setFetchError(error?.message || 'Impossible de sauvegarder le pied de page');
@@ -126,7 +126,7 @@ const AdminFooterEditor = () => {
         <div className="flex items-center justify-between mb-6 gap-4">
           <div>
             <h1 className="text-2xl md:text-3xl font-bold text-foreground mb-2">Modifier le pied de page</h1>
-            <p className="text-muted-foreground">Les valeurs de cette page sont affichees sur le footer public</p>
+            <p className="text-muted-foreground">Les valeurs de cette page sont affichées sur le footer public</p>
           </div>
           <div className="flex gap-2">
             <Button variant="outline" iconName="RefreshCw" onClick={loadFooterSettings} loading={loading}>

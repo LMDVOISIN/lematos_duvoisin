@@ -51,7 +51,7 @@ export const getCurrentPosition = () => {
       Geolocation.requestPermissions()
         ?.then((permissionStatus) => {
           if (permissionStatus?.location === 'denied' || permissionStatus?.coarseLocation === 'denied') {
-            throw new Error('Autorisation de geolocalisation refusee. Veuillez activer la localisation dans les parametres de votre appareil.');
+            throw new Error('Autorisation de géolocalisation refusée. Veuillez activer la localisation dans les paramètres de votre appareil.');
           }
 
           return Geolocation.getCurrentPosition({
@@ -68,13 +68,13 @@ export const getCurrentPosition = () => {
           });
         })
         ?.catch((error) => {
-          reject(new Error(error?.message || 'Erreur de geolocalisation.'));
+          reject(new Error(error?.message || 'Erreur de géolocalisation.'));
         });
       return;
     }
 
     if (!navigator.geolocation) {
-      reject(new Error("La geolocalisation n'est pas supportee par votre navigateur"));
+      reject(new Error("La géolocalisation n'est pas supportée par votre navigateur"));
       return;
     }
 
@@ -87,20 +87,20 @@ export const getCurrentPosition = () => {
         });
       },
       (error) => {
-        let errorMessage = 'Erreur de geolocalisation';
+        let errorMessage = 'Erreur de géolocalisation';
 
         switch (error.code) {
           case error.PERMISSION_DENIED:
-            errorMessage = 'Autorisation de geolocalisation refusee. Veuillez activer la geolocalisation dans les parametres de votre navigateur.';
+            errorMessage = 'Autorisation de géolocalisation refusée. Veuillez activer la géolocalisation dans les paramètres de votre navigateur.';
             break;
           case error.POSITION_UNAVAILABLE:
-            errorMessage = 'Position non disponible. Veuillez reessayer.';
+            errorMessage = 'Position non disponible. Veuillez réessayer.';
             break;
           case error.TIMEOUT:
-            errorMessage = "Delai d'attente depasse. Veuillez reessayer.";
+            errorMessage = "Délai d'attente dépassé. Veuillez réessayer.";
             break;
           default:
-            errorMessage = 'Erreur inconnue lors de la geolocalisation.';
+            errorMessage = 'Erreur inconnue lors de la géolocalisation.';
         }
 
         reject(new Error(errorMessage));
@@ -199,7 +199,7 @@ export const isGeolocationAvailable = () => {
  */
 export const watchPosition = (onSuccess, onError) => {
   if (!navigator.geolocation) {
-    onError?.(new Error('Geolocalisation non supportee'));
+    onError?.(new Error('Géolocalisation non supportée'));
     return null;
   }
 

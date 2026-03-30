@@ -82,7 +82,7 @@ const AdminEmailTemplates = () => {
       const result = await sendTestEmail(testEmail, selectedTemplate?.key);
 
       if (result?.success) {
-        alert(`Courriel d'essai envoye a ${testEmail}`);
+        alert(`Courriel d'essai envoyé à ${testEmail}`);
         setTestEmail('');
         fetchEmailQueue();
       } else {
@@ -100,10 +100,10 @@ const AdminEmailTemplates = () => {
     try {
       setRetrying(true);
       const results = await retryFailedEmails();
-      alert(`Reessai termine: ${results?.success} reussis, ${results?.failed} echoues`);
+      alert(`Réessai terminé : ${results?.success} réussis, ${results?.failed} échoués`);
       fetchEmailQueue();
     } catch (error) {
-      console.error('Erreur lors de la relance des echecs de courriels :', error);
+      console.error('Erreur lors de la relance des échecs de courriels :', error);
       alert(`Erreur: ${error?.message}`);
     } finally {
       setRetrying(false);
@@ -147,9 +147,9 @@ const AdminEmailTemplates = () => {
     if (key?.startsWith('reservation_')) return 'Réservations';
     if (key?.startsWith('message_') || key?.startsWith('new_message')) return 'Messages';
     if (key?.startsWith('payment_')) return 'Paiements';
-    if (key?.startsWith('documents_')) return 'Documents';
+    if (key?.startsWith('documents_') || key?.startsWith('identity_document_')) return 'Documents';
     if (key?.startsWith('reminder_')) return 'Rappels';
-    if (key?.startsWith('notifications_') || key?.includes('digest')) return 'Recapitulatifs';
+    if (key?.startsWith('notifications_') || key?.includes('digest')) return 'Récapitulatifs';
     if (key?.startsWith('rental_')) return 'Locations';
     if (key?.startsWith('internal_')) return 'Internes';
     if (key?.startsWith('test_')) return 'Essais';
@@ -199,7 +199,7 @@ const AdminEmailTemplates = () => {
 
         <div className="mb-6">
           <h1 className="text-2xl md:text-3xl font-bold text-foreground mb-2">Systeme de courriels</h1>
-          <p className="text-muted-foreground">Gerez les modeles de courriels et consultez l'historique d'envoi</p>
+          <p className="text-muted-foreground">Gérez les modèles de courriels et consultez l'historique d'envoi</p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
@@ -221,7 +221,7 @@ const AdminEmailTemplates = () => {
                 <Icon name="CheckCircle" size={20} className="text-green-600" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Envoyes</p>
+                <p className="text-sm text-muted-foreground">Envoyés</p>
                 <p className="text-2xl font-bold text-foreground">{queueStats?.sent}</p>
               </div>
             </div>
@@ -380,9 +380,9 @@ const AdminEmailTemplates = () => {
             {activeTab === 'file' && (
               <div>
                 <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-lg font-semibold text-foreground">Courriels en attente / en echec</h3>
+                  <h3 className="text-lg font-semibold text-foreground">Courriels en attente / en échec</h3>
                   <Button variant="outline" iconName="RefreshCw" onClick={handleRetryFailed} disabled={retrying || queueStats?.failed === 0}>
-                    {retrying ? 'Reessai...' : `Reessayer les echecs (${queueStats?.failed})`}
+                    {retrying ? 'Réessai...' : `Réessayer les échecs (${queueStats?.failed})`}
                   </Button>
                 </div>
 
@@ -413,7 +413,7 @@ const AdminEmailTemplates = () => {
                   {queueItems?.length === 0 && (
                     <div className="text-center py-12">
                       <Icon name="CheckCircle" size={48} className="text-green-600 mx-auto mb-4" />
-                      <p className="text-muted-foreground">Aucun courriel en attente ou en echec</p>
+                      <p className="text-muted-foreground">Aucun courriel en attente ou en échec</p>
                     </div>
                   )}
                 </div>
@@ -436,7 +436,7 @@ const AdminEmailTemplates = () => {
                           </div>
                           <p className="text-sm text-muted-foreground">Destinataire: {email?.recipient_email}</p>
                           <p className="text-xs text-muted-foreground mt-1">
-                            {email?.sent_at ? `Envoye: ${formatDate(email?.sent_at)}` : `Cree: ${formatDate(email?.created_at)}`}
+                            {email?.sent_at ? `Envoyé: ${formatDate(email?.sent_at)}` : `Créé: ${formatDate(email?.created_at)}`}
                           </p>
                           {getEmailError(email) && (
                             <p className="text-xs text-red-600 mt-2">{getEmailError(email)}</p>
@@ -463,6 +463,7 @@ const AdminEmailTemplates = () => {
 };
 
 export default AdminEmailTemplates;
+
 
 
 

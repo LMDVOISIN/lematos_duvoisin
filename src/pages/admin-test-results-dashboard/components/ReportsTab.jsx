@@ -8,7 +8,7 @@ const obtenirLibelleGravite = (gravite) => {
     case 'critical':
       return 'Critique';
     case 'high':
-      return 'Elevee';
+      return 'Élevée';
     case 'medium':
       return 'Moyenne';
     case 'low':
@@ -199,7 +199,7 @@ const SignalementsTab = () => {
 
               {signalementSelectionne?.reproduction_steps && (
                 <div>
-                  <h3 className="mb-1 text-sm font-medium text-surface-foreground">Etapes de reproduction</h3>
+                  <h3 className="mb-1 text-sm font-medium text-surface-foreground">Étapes de reproduction</h3>
                   <p className="whitespace-pre-wrap text-foreground">{signalementSelectionne?.reproduction_steps}</p>
                 </div>
               )}
@@ -217,7 +217,7 @@ const SignalementsTab = () => {
 
               {signalementSelectionne?.screenshot_urls?.length > 0 && (
                 <div>
-                  <h3 className="mb-2 text-sm font-medium text-surface-foreground">Captures d'ecran</h3>
+                  <h3 className="mb-2 text-sm font-medium text-surface-foreground">Captures d'écran</h3>
                   <div className="grid grid-cols-2 gap-2">
                     {signalementSelectionne?.screenshot_urls?.map((url, index) => (
                       <img

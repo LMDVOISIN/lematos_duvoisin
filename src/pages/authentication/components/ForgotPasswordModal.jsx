@@ -30,7 +30,7 @@ const ForgotPasswordModal = ({ isOpen, onClose }) => {
     try {
       const { error: resetError } = await resetPassword(email);
       if (resetError) {
-        setError(resetError?.message || 'Impossible d\'envoyer le courriel de reinitialisation');
+    setError(resetError?.message || "Impossible d'envoyer le courriel de réinitialisation");
         setLoading(false);
         return;
       }
@@ -54,8 +54,8 @@ const ForgotPasswordModal = ({ isOpen, onClose }) => {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
-      <div className="w-full max-w-md bg-card rounded-xl shadow-elevation-4 border border-border overflow-hidden">
+    <div className="modal-viewport z-[2000] bg-background/80 backdrop-blur-sm">
+      <div className="modal-card modal-card-auto w-full max-w-md overflow-hidden rounded-xl border border-border bg-card shadow-elevation-4">
         <div className="flex items-center justify-between p-4 md:p-6 border-b border-border">
           <h2 className="text-lg md:text-xl font-semibold text-foreground">
             Réinitialiser le mot de passe

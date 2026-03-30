@@ -243,6 +243,8 @@ export const AuthProvider = ({ children }) => {
     userProfile,
     loading,
     profileLoading,
+    isTester,
+    testerData,
     signUp,
     signIn,
     signOut,

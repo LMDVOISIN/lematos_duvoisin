@@ -1,9 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import Header from '../navigation/Header';
-import Footer from '../Footer';
 import Icon from '../AppIcon';
 import legalService from '../../services/legalService';
 import { getCandidateSlugs } from '../../utils/legalPagesConfig';
+import { ActionCard, ActionHero, ActionPageShell, ActionPill } from '../page/ActionPageLayout';
 
 const formatDate = (value) => {
   if (!value) return '-';
@@ -53,14 +52,15 @@ const ManagedLegalPage = ({ slug, titleFallback, fallbackSlugs = [], children = 
             content: resolved?.content || '',
             updated_at: resolved?.updated_at || null
           });
-        } else {
-          setPageData({
-            slug,
-            title: titleFallback || slug,
-            content: '',
-            updated_at: null
-          });
+          return;
         }
+
+        setPageData({
+          slug,
+          title: titleFallback || slug,
+          content: '',
+          updated_at: null
+        });
       } catch (err) {
         console.error('Erreur chargement page legale publique:', err);
         if (!active) return;
@@ -78,52 +78,67 @@ const ManagedLegalPage = ({ slug, titleFallback, fallbackSlugs = [], children = 
   }, [slug, titleFallback, fallbackKey]);
 
   return (
-    <div className="min-h-screen flex flex-col bg-surface">
-      <Header />
-
-      <main className="flex-1 pt-20 pb-12">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="bg-white rounded-lg shadow-elevation-2 p-8">
-            <h1 className="text-3xl font-bold text-foreground mb-2">{pageData?.title || titleFallback}</h1>
-            <p className="text-sm text-muted-foreground mb-8">
-              Derniere mise ? jour : {formatDate(pageData?.updated_at)}
-            </p>
-
-            {error && (
-              <div className="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                {error}
-              </div>
-            )}
-
-            {loading ? (
-              <p className="text-muted-foreground">Chargement...</p>
-            ) : pageData?.content ? (
-              <div
-                className="prose prose-sm md:prose-base max-w-none text-muted-foreground"
-                dangerouslySetInnerHTML={{ __html: pageData?.content }}
-              />
-            ) : (
-              <p className="text-muted-foreground">Cette page n'a pas encore de contenu.</p>
-            )}
-
-            {children}
-
-            <div className="mt-8 pt-6 border-t border-border">
-              <button
-                type="button"
-                onClick={() => window.print()}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-surface hover:bg-border rounded-lg text-sm font-medium text-foreground transition-colors"
-              >
-                <Icon name="Printer" size={16} />
-                Imprimer cette page
-              </button>
-            </div>
+    <ActionPageShell
+      maxWidth="max-w-5xl"
+      hero={(
+        <ActionHero
+          eyebrow="Informations légales"
+          title={pageData?.title || titleFallback}
+          subtitle="Version officielle consultable et imprimable."
+          tone="warm"
+          pills={[
+            { label: `Dernière mise à jour : ${formatDate(pageData?.updated_at)}`, icon: 'CalendarClock' },
+            { label: 'Contenu officiel de la plateforme', icon: 'Scale' }
+          ]}
+        />
+      )}
+    >
+      <ActionCard className="space-y-6">
+        <div className="flex flex-col gap-3 border-b border-slate-200 pb-5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-wrap gap-2">
+            <ActionPill icon="Scale" className="border-slate-200 bg-slate-50 text-slate-700">
+              Lecture officielle
+            </ActionPill>
+            <ActionPill icon="FileText" className="border-slate-200 bg-slate-50 text-slate-700">
+              Référence consultable à tout moment
+            </ActionPill>
           </div>
-        </div>
-      </main>
 
-      <Footer />
-    </div>
+          <button
+            type="button"
+            onClick={() => window.print()}
+            className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50"
+          >
+            <Icon name="Printer" size={16} />
+            Imprimer cette page
+          </button>
+        </div>
+
+        {error ? (
+          <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {error}
+          </div>
+        ) : null}
+
+        {loading ? (
+          <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">
+            <Icon name="Loader2" size={18} className="animate-spin" />
+            Chargement du contenu...
+          </div>
+        ) : pageData?.content ? (
+          <div
+            className="prose prose-sm max-w-none text-slate-700 md:prose-base prose-headings:text-slate-950 prose-p:text-slate-700 prose-a:text-primary"
+            dangerouslySetInnerHTML={{ __html: pageData?.content }}
+          />
+        ) : (
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">
+            Cette page n'a pas encore de contenu.
+          </div>
+        )}
+
+        {children}
+      </ActionCard>
+    </ActionPageShell>
   );
 };
 

@@ -1,6 +1,6 @@
 import { addDays, isBefore, startOfDay } from 'date-fns';
 
-export const SAME_DAY_RESERVATION_BLOCKED_MESSAGE = "La reservation le jour meme n'est pas autorisée. Merci de choisir une date a partir de demain.";
+export const SAME_DAY_RESERVATION_BLOCKED_MESSAGE = "La réservation le jour même n'est pas autorisée. Merci de choisir une date à partir de demain.";
 const YYYY_MM_DD_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 export const normalizeReservationDay = (value) => {

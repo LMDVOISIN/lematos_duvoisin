@@ -102,7 +102,7 @@ const PaymentForm = ({ onSubmit, loading, totalAmount }) => {
       <div className="flex items-start gap-2 p-3 bg-warning/10 border border-warning/20 rounded-md">
         <Icon name="Info" size={18} className="text-warning flex-shrink-0 mt-0.5" />
         <p className="text-sm text-muted-foreground">
-          Aucune transaction réelle n'est exécutée depuis ce formulaire tant que Stripe n'est pas connecté à cette page.
+          Aucune transaction réelle n'est exécutée depuis ce formulaire tant qu'un parcours de paiement n'est pas relié à cette page.
         </p>
       </div>
 
@@ -164,7 +164,7 @@ const PaymentForm = ({ onSubmit, loading, totalAmount }) => {
       </Button>
 
       <p className="text-xs text-center text-muted-foreground mt-4">
-        Le débit réel sera disponible après intégration Stripe complète sur ce parcours.
+        Le debit reel sera disponible apres finalisation complete du parcours de paiement.
       </p>
     </form>
   );

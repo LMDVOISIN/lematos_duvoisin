@@ -36,7 +36,7 @@ const readStoredConsent = () => {
       source: parsedConsent?.source || 'unknown'
     };
   } catch (error) {
-    console.error('Impossible de lire les preferences cookies:', error);
+    console.error('Impossible de lire les préférences cookies :', error);
     return null;
   }
 };
@@ -68,7 +68,7 @@ const CookieConsentContext = createContext(null);
 export const useCookieConsent = () => {
   const context = useContext(CookieConsentContext);
   if (!context) {
-    throw new Error('useCookieConsent doit etre utilise dans CookieConsentProvider');
+    throw new Error('useCookieConsent doit être utilisé dans CookieConsentProvider');
   }
   return context;
 };

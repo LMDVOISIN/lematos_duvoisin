@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import Input from '../../../components/ui/Input';
 import Icon from '../../../components/AppIcon';
+import Image from '../../../components/AppImage';
 import {
   PAYMENT_FEE_FIXED,
   PAYMENT_FEE_RATE,
@@ -14,8 +15,10 @@ const categoryParams = {
 };
 
 const SIMULATION_DURATIONS = [1, 3, 15];
+const PRICING_ILLUSTRATION_SRC = '/assets/images/prix-pas-trop-cher.png';
 
 const formatEuro = (amount) => `${Number(amount || 0).toFixed(2)} EUR`;
+const formatDailyRateLabel = (amount) => `${Number(amount || 0).toLocaleString('fr-FR', { maximumFractionDigits: 2 })} EUR / jour`;
 
 const normalizeCategory = (category) => {
   if (!category) return '';
@@ -51,6 +54,20 @@ const calculateSuggestedPrice = (value, category) => {
   };
 };
 
+const calculateAmortization = (itemValue, dailyPrice) => {
+  const value = Number.parseFloat(itemValue);
+  const price = Number.parseFloat(dailyPrice);
+
+  if (!Number.isFinite(value) || value <= 0 || !Number.isFinite(price) || price <= 0) {
+    return null;
+  }
+
+  const days = Math.ceil(value / price);
+  const weeks = Math.ceil(days / 7);
+
+  return { days, weeks };
+};
+
 const TarificationStep = ({ formData, updateFormData, errors }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalValue, setModalValue] = useState('');
@@ -84,17 +101,9 @@ const TarificationStep = ({ formData, updateFormData, errors }) => {
     closeModal();
   };
 
-  const calculateROI = () => {
-    if (!modalValue || !suggestedPrice?.price) return null;
-    const value = parseFloat(modalValue);
-    const price = suggestedPrice?.price;
-    const daysToAmortize = Math.ceil(value / price);
-    const weeksToAmortize = (daysToAmortize / 7)?.toFixed(1);
-    return { weeks: weeksToAmortize, days: daysToAmortize };
-  };
-
-  const roi = calculateROI();
   const simulatedDailyRate = Math.max(0, Number.parseFloat(formData?.dailyRate) || 0);
+  const roi = calculateAmortization(modalValue, suggestedPrice?.price);
+  const currentAmortization = calculateAmortization(formData?.equipmentValue, simulatedDailyRate);
   const simulatedScenarios = SIMULATION_DURATIONS.map((days) => {
     const rentalAmount = simulatedDailyRate * days;
     const ownerNet = computeOwnerNetEstimate({
@@ -111,81 +120,58 @@ const TarificationStep = ({ formData, updateFormData, errors }) => {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-xl font-semibold text-foreground mb-2">Tarification</h2>
-        <p className="text-sm text-muted-foreground">Definissez le prix de location et la caution</p>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="md:col-span-2">
-          <Input
-            label="Tarif journalier"
-            type="number"
-            placeholder="25.00"
-            value={formData?.dailyRate}
-            onChange={(e) => updateFormData('dailyRate', e?.target?.value)}
-            error={errors?.dailyRate}
-            description="Prix par jour de location en euros"
-            required
-          />
-          <button
-            type="button"
-            onClick={openModal}
-            className="mt-2 inline-flex items-center gap-2 px-4 py-2 bg-[#17a2b8] text-white rounded-md text-sm font-medium hover:bg-[#138496] transition-colors"
-          >
-            <Icon name="Calculator" size={16} />
-            Calculer un prix conseille
-          </button>
-        </div>
-
-        <Input
-          label="Caution demandee"
-          type="number"
-          placeholder="150.00"
-          value={formData?.cautionAmount}
-          onChange={(e) => updateFormData('cautionAmount', e?.target?.value)}
-          error={errors?.cautionAmount}
-          description="La caution est garantie par empreinte CB autorisee au paiement (non debitee)."
-          required
-        />
-
-        <div>
-          <p className="text-sm font-medium text-foreground mb-2">Mode de garantie</p>
-          <div className="p-3 rounded-md border border-border bg-surface text-sm text-muted-foreground">
-            Mode unique plateforme: empreinte bancaire (CB).
+      <div className="rounded-2xl border border-border bg-surface/50 p-4 md:p-5">
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1.5fr)_minmax(320px,420px)] lg:items-start">
+          <div className="order-2 overflow-hidden rounded-2xl border border-[#dbeaf7] bg-white lg:order-1">
+            <Image
+              src={PRICING_ILLUSTRATION_SRC}
+              alt="Illustration montrant qu un prix raisonnable loue mieux qu un prix trop cher."
+              className="block w-full h-auto align-top"
+            />
           </div>
-        </div>
-      </div>
 
-      <div className="bg-[#17a2b8]/10 border border-[#17a2b8]/20 rounded-lg p-4">
-        <div className="flex gap-2">
-          <Icon name="Info" size={18} className="text-[#17a2b8] flex-shrink-0 mt-0.5" />
-          <div>
-            <p className="text-sm font-medium text-foreground mb-2">Conseils de tarification</p>
-            <ul className="text-sm text-muted-foreground space-y-1">
-              <li>Consultez les prix similaires dans votre region</li>
-              <li>Tenez compte de l'etat et de l'age du materiel</li>
-              <li>L'empreinte CB garantit la caution</li>
-              <li>L'empreinte CB est une autorisation bancaire non debitee au paiement</li>
-              <li>Commission plateforme: {(PLATFORM_COMMISSION_RATE * 100).toLocaleString('fr-FR')}% du montant de location</li>
-              <li>Frais de paiement location: {(PAYMENT_FEE_RATE * 100).toLocaleString('fr-FR')}% + {PAYMENT_FEE_FIXED.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} EUR (deduits du reversement proprietaire)</li>
-              <li>Aucun frais bancaire n'est applique tant que l'empreinte CB reste non capturee</li>
-            </ul>
-          </div>
-        </div>
-      </div>
+          <div className="order-1 space-y-4 lg:order-2">
+            <Input
+              label="Tarif journalier"
+              type="number"
+              placeholder="25.00"
+              value={formData?.dailyRate}
+              onChange={(e) => updateFormData('dailyRate', e?.target?.value)}
+              error={errors?.dailyRate}
+              description="Prix par jour de location en euros"
+              required
+              className="h-14 rounded-xl bg-white px-4 text-lg"
+            />
+            <button
+              type="button"
+              onClick={openModal}
+              className="inline-flex items-center gap-2 rounded-xl bg-[#17a2b8] px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-[#138496]"
+            >
+              <Icon name="Calculator" size={16} />
+              Calculer un prix conseillé
+            </button>
 
-      <div className="bg-warning/10 border border-warning/30 rounded-lg p-4">
-        <div className="flex gap-2">
-          <Icon name="ShieldAlert" size={18} className="text-warning flex-shrink-0 mt-0.5" />
-          <div className="space-y-2 text-sm text-muted-foreground">
-            <p className="font-medium text-foreground">Information importante en cas de capture apres litige</p>
-            <p>
-              Cette estimation n'inclut aucun frais sur la caution, car une empreinte CB non capturee n'entraine pas de frais Stripe.
-            </p>
-            <p>
-              Si une capture totale ou partielle de la caution est validee apres litige, des frais de paiement carte s'appliquent sur le montant capture. Si ce paiement capture est ensuite conteste, des frais de litige peuvent aussi s'appliquer selon le reseau de carte utilise.
-            </p>
+            <Input
+              label="Caution demandée"
+              type="number"
+              placeholder="150.00"
+              value={formData?.cautionAmount}
+              onChange={(e) => updateFormData('cautionAmount', e?.target?.value)}
+              error={errors?.cautionAmount}
+              description="La caution est garantie par empreinte CB autorisée au paiement (non débitée)."
+              required
+              className="h-14 rounded-xl bg-white px-4 text-lg"
+            />
+
+            {currentAmortization ? (
+              <div className="rounded-xl bg-[#d4f4dd] p-4 space-y-2">
+                <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">AMORTISSEMENT AU TARIF ACTUEL</p>
+                <p className="text-3xl font-bold text-gray-900">{formatDailyRateLabel(simulatedDailyRate)}</p>
+                <p className="text-sm text-gray-700 leading-relaxed">
+                  Amorti en environ <strong className="font-semibold text-gray-900">{currentAmortization?.weeks} semaines</strong> de location, soit après <strong className="font-semibold text-gray-900">{currentAmortization?.days} jours</strong> loués.
+                </p>
+              </div>
+            ) : null}
           </div>
         </div>
       </div>
@@ -195,7 +181,7 @@ const TarificationStep = ({ formData, updateFormData, errors }) => {
           <div className="flex flex-col gap-1 mb-4">
             <p className="text-sm font-medium text-foreground">Apercu des revenus</p>
             <p className="text-xs text-muted-foreground">
-              Simulations de reversement proprietaire sur 1 jour, 3 jours et 15 jours.
+              Simulations de reversement propriétaire sur 1 jour, 3 jours et 15 jours.
             </p>
           </div>
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
@@ -239,7 +225,7 @@ const TarificationStep = ({ formData, updateFormData, errors }) => {
             ))}
           </div>
           <p className="text-xs text-muted-foreground pt-4">
-            Estimation hors litige. Les deductions appliquees au reversement proprietaire incluent uniquement la commission plateforme et les frais de paiement de la location.
+            Estimation hors litige. Les déductions appliquées au reversement propriétaire incluent uniquement la commission plateforme et les frais de paiement de la location.
           </p>
         </div>
       )}
@@ -250,9 +236,9 @@ const TarificationStep = ({ formData, updateFormData, errors }) => {
             <div className="p-6 border-b border-gray-200">
               <div className="flex items-start justify-between">
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-900">Calculer un prix conseille</h3>
+                  <h3 className="text-lg font-semibold text-gray-900">Calculer un prix conseillé</h3>
                   <p className="text-sm text-gray-600 mt-1">
-                    Estime un prix par jour a partir de la valeur de l'objet et de la categorie.
+                    Estime un prix par jour à partir de la valeur de l'objet et de la catégorie.
                   </p>
                 </div>
                 <button
@@ -281,10 +267,10 @@ const TarificationStep = ({ formData, updateFormData, errors }) => {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Categorie utilisee
+                  Catégorie utilisée
                 </label>
                 <div className="px-3 py-2 bg-gray-100 border border-gray-300 rounded-md text-gray-700">
-                  {formData?.category || 'Non definie'}
+                  {formData?.category || 'Non définie'}
                 </div>
               </div>
 
@@ -297,7 +283,7 @@ const TarificationStep = ({ formData, updateFormData, errors }) => {
                   <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">PRIX RECOMMANDE</p>
                   <p className="text-3xl font-bold text-gray-900">{suggestedPrice?.price} EUR / jour</p>
                   <p className="text-sm text-gray-700 leading-relaxed">
-                    Amorti en environ {roi?.weeks} semaines de location, soit apres {roi?.days} jours loues.
+                    Amorti en environ <strong className="font-semibold text-gray-900">{roi?.weeks} semaines</strong> de location, soit après <strong className="font-semibold text-gray-900">{roi?.days} jours</strong> loués.
                   </p>
                 </div>
               )}
@@ -305,7 +291,7 @@ const TarificationStep = ({ formData, updateFormData, errors }) => {
               {modalValue && !suggestedPrice && (
                 <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
                   <p className="text-sm text-yellow-800">
-                    Impossible de calculer un prix pour cette categorie ou cette valeur.
+                    Impossible de calculer un prix pour cette catégorie ou cette valeur.
                   </p>
                 </div>
               )}

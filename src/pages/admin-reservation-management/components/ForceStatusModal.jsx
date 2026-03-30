@@ -23,8 +23,8 @@ const ForceStatusModal = ({ onClose, onSubmit }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-modal flex items-center justify-center p-4 bg-black/50">
-      <div className="bg-white rounded-lg shadow-elevation-4 max-w-md w-full">
+    <div className="modal-viewport z-modal bg-black/50">
+      <div className="modal-card modal-card-shell max-w-md rounded-lg bg-white shadow-elevation-4">
         {/* Modal En-tête */}
         <div className="border-b border-border px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -40,7 +40,7 @@ const ForceStatusModal = ({ onClose, onSubmit }) => {
         </div>
 
         {/* Modal Content */}
-        <div className="p-6 space-y-4">
+        <div className="modal-card-body p-6 space-y-4">
           <div className="bg-warning/10 border border-warning/20 rounded-lg p-3">
             <div className="flex gap-2">
               <Icon name="AlertTriangle" size={16} className="text-warning flex-shrink-0 mt-0.5" />

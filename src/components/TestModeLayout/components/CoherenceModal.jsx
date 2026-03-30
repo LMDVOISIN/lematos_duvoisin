@@ -1,43 +1,39 @@
 import React, { useState } from 'react';
 
-
 const CoherenceModal = ({ question, onComplete }) => {
   const [answer, setAnswer] = useState('');
 
   const handleSubmit = () => {
-    if (answer?.trim()) {
-      onComplete(answer);
-    }
+    if (!answer?.trim()) return;
+    onComplete(answer.trim());
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
-        <div className="flex justify-between items-start mb-4">
-          <h3 className="text-lg font-semibold text-gray-900">Question de cohérence</h3>
-        </div>
+    <div className="modal-viewport z-[9999] bg-black/60">
+      <div className="modal-card modal-card-auto max-w-xl rounded-lg bg-white p-6 shadow-xl">
+        <h3 className="mb-2 text-lg font-semibold text-gray-900">Question de compréhension</h3>
+        <p className="mb-4 text-sm text-gray-600">
+          Merci de répondre avant de continuer.
+        </p>
 
-        <p className="text-gray-700 mb-4">{question}</p>
+        <p className="mb-3 text-sm font-medium text-gray-800">{question}</p>
 
         <textarea
           value={answer}
-          onChange={(e) => setAnswer(e?.target?.value)}
+          onChange={(event) => setAnswer(event?.target?.value || '')}
           placeholder="Votre réponse..."
-          className="w-full border border-gray-300 rounded-lg p-3 mb-4 min-h-[100px] focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          rows={4}
+          className="mb-4 w-full resize-none rounded-lg border border-gray-300 p-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
           autoFocus
         />
 
         <button
           onClick={handleSubmit}
           disabled={!answer?.trim()}
-          className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+          className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-300"
         >
-          Continuer
+          Valider et continuer
         </button>
-
-        <p className="text-xs text-gray-500 mt-3 text-center">
-          Vous devez répondre pour accéder à la page
-        </p>
       </div>
     </div>
   );

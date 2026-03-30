@@ -78,6 +78,12 @@ const AdminAutomationManagement = () => {
         case 'check_missing_documents':
           result = await automationService?.checkMissingDocuments();
           break;
+        case 'cancel_overdue_paid_reservations':
+          result = await automationService?.cancelOverduePaidReservations();
+          break;
+        case 'complete_finished_reservations':
+          result = await automationService?.completeFinishedReservations();
+          break;
         case 'cancel_unpaid_reservations':
           result = await automationService?.cancelUnpaidReservations();
           break;
@@ -154,11 +160,25 @@ const AdminAutomationManagement = () => {
       color: 'text-blue-600 bg-blue-100'
     },
     {
+      id: 'cancel_overdue_paid_reservations',
+      name: 'Régularisation locations non démarrées',
+      description: 'Annule après la date de fin si la remise n a jamais commencé, conserve 1 jour pour le propriétaire et rembourse le reste',
+      icon: 'RotateCcw',
+      color: 'text-cyan-700 bg-cyan-100'
+    },
+    {
       id: 'cancel_unpaid_reservations',
       name: 'Annulation réservations impayées',
       description: 'Annule les réservations non payées après délai (si payment_deadline est configuré)',
       icon: 'XCircle',
       color: 'text-red-600 bg-red-100'
+    },
+    {
+      id: 'complete_finished_reservations',
+      name: 'Clôture locations terminées',
+      description: 'Passe en terminée les locations payées dont la date de fin est dépassée',
+      icon: 'CheckCheck',
+      color: 'text-emerald-700 bg-emerald-100'
     },
     {
       id: 'release_deposits',

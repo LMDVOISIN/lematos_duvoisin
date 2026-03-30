@@ -169,7 +169,7 @@ async function updateWithColumnFallback(table, id, payload, options = {}) {
     if (Object?.keys(mutablePayload)?.length === 0) return { error: null };
   }
 
-  return { error: new Error('Echec mise ? jour feedback: colonnes incompatibles') };
+  return { error: new Error('Échec de mise à jour du feedback : colonnes incompatibles') };
 }
 
 async function getAllFeedbackFromTable(table, filters = {}) {
@@ -316,9 +316,9 @@ const feedbackService = {
         return { data: null, error };
       }
 
-      return { data: null, error: lastError || new Error('Impossible de mettre a jour le statut') };
+      return { data: null, error: lastError || new Error('Impossible de mettre à jour le statut') };
     } catch (error) {
-      console.error('Erreur lors de la mise ? jour du statut feedback :', error);
+      console.error('Erreur lors de la mise à jour du statut du feedback :', error);
       throw error;
     }
   },

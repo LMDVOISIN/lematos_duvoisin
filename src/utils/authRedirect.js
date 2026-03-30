@@ -27,7 +27,7 @@ export const storeAuthRedirectPath = (path) => {
   try {
     window.sessionStorage.setItem(AUTH_REDIRECT_STORAGE_KEY, sanitizedPath);
   } catch (error) {
-    console.warn('Impossible de sauvegarder la redirection apr?s connexion:', error);
+    console.warn('Impossible de sauvegarder la redirection après connexion:', error);
   }
 };
 
@@ -38,7 +38,7 @@ export const readAuthRedirectPath = () => {
     const rawPath = window.sessionStorage.getItem(AUTH_REDIRECT_STORAGE_KEY);
     return sanitizeAuthRedirectPath(rawPath, null);
   } catch (error) {
-    console.warn('Impossible de lire la redirection apr?s connexion:', error);
+    console.warn('Impossible de lire la redirection après connexion:', error);
     return null;
   }
 };
@@ -49,7 +49,7 @@ export const clearAuthRedirectPath = () => {
   try {
     window.sessionStorage.removeItem(AUTH_REDIRECT_STORAGE_KEY);
   } catch (error) {
-    console.warn('Impossible de nettoyer la redirection apr?s connexion:', error);
+    console.warn('Impossible de nettoyer la redirection après connexion:', error);
   }
 };
 

@@ -1,9 +1,10 @@
-﻿import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Helmet } from 'react-helmet';
 import { Link, useNavigate } from 'react-router-dom';
 import Input from '../../components/ui/Input';
 import Button from '../../components/ui/Button';
 import Icon from '../../components/AppIcon';
+import { ActionCard } from '../../components/page/ActionPageLayout';
 import { supabase } from '../../lib/supabase';
 import { translateAuthErrorMessage } from '../../utils/translateAuthErrorMessage';
 
@@ -30,7 +31,7 @@ const ResetPassword = () => {
             setError(
               translateAuthErrorMessage(
                 decodeURIComponent(hashError),
-                'Lien invalide ou expiré. Merci de refaire une demande.'
+                'Lien invalide ou expire. Merci de refaire une demande.'
               )
             );
             setRecoveryValid(false);
@@ -46,7 +47,7 @@ const ResetPassword = () => {
             setError(
               translateAuthErrorMessage(
                 sessionError?.message,
-                'Impossible de valider le lien de réinitialisation.'
+                'Impossible de valider le lien de reinitialisation.'
               )
             );
             setRecoveryValid(false);
@@ -57,7 +58,7 @@ const ResetPassword = () => {
 
         if (!session) {
           if (isMounted) {
-            setError('Lien invalide ou expiré. Merci de refaire une demande.');
+            setError('Lien invalide ou expire. Merci de refaire une demande.');
             setRecoveryValid(false);
             setInitializing(false);
           }
@@ -89,7 +90,7 @@ const ResetPassword = () => {
     setError('');
 
     if (!password || password?.length < 8) {
-      setError('Le mot de passe doit contenir au moins 8 caractères.');
+      setError('Le mot de passe doit contenir au moins 8 caracteres.');
       return;
     }
 
@@ -106,7 +107,7 @@ const ResetPassword = () => {
         setError(
           translateAuthErrorMessage(
             updateError?.message,
-            'Impossible de mettre à jour le mot de passe.'
+            'Impossible de mettre a jour le mot de passe.'
           )
         );
         setSubmitting(false);
@@ -119,7 +120,7 @@ const ResetPassword = () => {
         navigate('/authentification', { replace: true });
       }, 1600);
     } catch (err) {
-      setError('Erreur inattendue lors de la mise à jour du mot de passe.');
+      setError('Erreur inattendue lors de la mise a jour du mot de passe.');
       setSubmitting(false);
     }
   };
@@ -127,91 +128,133 @@ const ResetPassword = () => {
   return (
     <>
       <Helmet>
-        <title>Réinitialiser le mot de passe - Le Matos Du Voisin</title>
+        <title>Reinitialiser le mot de passe - Le Matos Du Voisin</title>
       </Helmet>
-      <div className="min-h-screen bg-gradient-to-b from-[#e9f4ff] via-[#f2f8ff] to-[#e7f5ff] flex items-center justify-center p-4">
-        <div className="w-full max-w-md bg-card rounded-xl shadow-elevation-3 border border-border p-6 md:p-8">
-          <div className="flex items-center gap-3 mb-6">
-            <img
-              src="/assets/images/android-chrome-192x192-1771179342850.png"
-              alt="Le Matos Du Voisin"
-              className="w-10 h-10 object-contain"
-            />
-            <h1 className="text-xl font-semibold text-foreground">Nouveau mot de passe</h1>
-          </div>
 
-          {initializing && (
-            <div className="text-center py-8">
-              <Icon name="Loader2" size={28} className="animate-spin mx-auto text-primary mb-3" />
-              <p className="text-sm text-muted-foreground">Validation du lien en cours...</p>
-            </div>
-          )}
-
-          {!initializing && success && (
-            <div className="text-center py-6">
-              <Icon name="CheckCircle" size={34} className="mx-auto text-success mb-3" />
-              <p className="font-medium text-foreground mb-1">Mot de passe mis à jour</p>
-              <p className="text-sm text-muted-foreground">Redirection vers la connexion...</p>
-            </div>
-          )}
-
-          {!initializing && !success && !recoveryValid && (
-            <div className="space-y-4">
-              <p className="text-sm text-error">{error}</p>
-              <Button
-                variant="default"
-                fullWidth
-                onClick={() => navigate('/authentification')}
-              >
-                Retour à la connexion
-              </Button>
-            </div>
-          )}
-
-          {!initializing && !success && recoveryValid && (
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <p className="text-sm text-muted-foreground">
-                Saisissez votre nouveau mot de passe.
-              </p>
-
-              <Input
-                label="Nouveau mot de passe"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e?.target?.value)}
-                placeholder="Minimum 8 caractères"
-                required
-              />
-
-              <Input
-                label="Confirmer le mot de passe"
-                type="password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e?.target?.value)}
-                placeholder="Retapez le mot de passe"
-                required
-              />
-
-              {error && <p className="text-sm text-error">{error}</p>}
-
-              <Button
-                type="submit"
-                variant="default"
-                fullWidth
-                loading={submitting}
-                iconName="Lock"
-                iconPosition="right"
-              >
-                Mettre à jour le mot de passe
-              </Button>
-
-              <div className="text-center">
-                <Link to="/authentification" className="text-sm text-primary hover:underline">
-                  Retour à la connexion
+      <div className="flex min-h-screen items-center justify-center bg-[linear-gradient(180deg,#eef8ff_0%,#f7fbff_100%)] px-4 py-8">
+        <div className="w-full max-w-3xl">
+          <ActionCard className="overflow-hidden rounded-[32px] border-white/80 bg-white/94 p-0">
+            <div className="grid gap-0 md:grid-cols-[minmax(0,0.95fr)_minmax(320px,420px)]">
+              <div className="bg-[linear-gradient(135deg,rgba(255,249,226,0.95),rgba(237,250,255,0.92))] p-6 md:p-8">
+                <Link to="/authentification" className="inline-flex items-center gap-3 rounded-full border border-white/70 bg-white/85 px-4 py-2 shadow-sm">
+                  <img
+                    src="/assets/images/android-chrome-192x192-1771179342850.png"
+                    alt="Logo Le Matos Du Voisin"
+                    className="h-10 w-10 object-contain"
+                  />
+                  <span className="text-sm font-semibold text-slate-950">Le Matos Du Voisin</span>
                 </Link>
+
+                <div className="mt-6 space-y-3">
+                  <div className="inline-flex rounded-full border border-white/70 bg-white/85 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-[#0f7081]">
+                    Nouveau mot de passe
+                  </div>
+                  <h1 className="text-3xl font-semibold leading-tight text-slate-950 md:text-4xl">
+                    Une seule chose a faire: choisir un nouveau mot de passe
+                  </h1>
+                  <p className="max-w-md text-sm text-slate-600 md:text-base">
+                    Verifiez le lien, entrez le nouveau mot de passe, puis retour a la connexion.
+                  </p>
+                </div>
+
+                <div className="mt-6 grid gap-3 sm:grid-cols-3 md:grid-cols-1">
+                  {[
+                    ['1. Ouvrir', 'Lien valide'],
+                    ['2. Choisir', 'Nouveau mot de passe'],
+                    ['3. Revenir', 'Connexion']
+                  ]?.map(([title, helper]) => (
+                    <div key={title} className="rounded-3xl border border-white/80 bg-white/88 p-4 shadow-sm">
+                      <p className="text-sm font-semibold text-slate-950">{title}</p>
+                      <p className="mt-1 text-sm text-slate-600">{helper}</p>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </form>
-          )}
+
+              <div className="p-6 md:p-8">
+                {initializing ? (
+                  <div className="py-10 text-center">
+                    <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-sky-50 text-sky-700">
+                      <Icon name="Loader2" size={24} className="animate-spin" />
+                    </div>
+                    <p className="text-base font-semibold text-slate-950">Verification du lien</p>
+                    <p className="mt-1 text-sm text-slate-600">Un instant...</p>
+                  </div>
+                ) : null}
+
+                {!initializing && success ? (
+                  <div className="py-8 text-center">
+                    <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 text-emerald-700">
+                      <Icon name="CheckCircle" size={28} />
+                    </div>
+                    <p className="text-base font-semibold text-slate-950">Mot de passe mis a jour</p>
+                    <p className="mt-1 text-sm text-slate-600">Redirection vers la connexion...</p>
+                  </div>
+                ) : null}
+
+                {!initializing && !success && !recoveryValid ? (
+                  <div className="space-y-4 py-4">
+                    <div className="rounded-2xl border border-rose-200 bg-rose-50/80 p-4">
+                      <p className="text-sm font-medium text-rose-800">{error}</p>
+                    </div>
+                    <Button variant="default" fullWidth onClick={() => navigate('/authentification')}>
+                      Retour a la connexion
+                    </Button>
+                  </div>
+                ) : null}
+
+                {!initializing && !success && recoveryValid ? (
+                  <form onSubmit={handleSubmit} className="space-y-4">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Action</p>
+                      <h2 className="mt-1 text-2xl font-semibold text-slate-950">Choisir un nouveau mot de passe</h2>
+                    </div>
+
+                    <Input
+                      label="Nouveau mot de passe"
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e?.target?.value)}
+                      placeholder="Minimum 8 caracteres"
+                      required
+                    />
+
+                    <Input
+                      label="Confirmer le mot de passe"
+                      type="password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e?.target?.value)}
+                      placeholder="Retapez le mot de passe"
+                      required
+                    />
+
+                    {error ? (
+                      <div className="rounded-2xl border border-rose-200 bg-rose-50/80 p-4">
+                        <p className="text-sm font-medium text-rose-800">{error}</p>
+                      </div>
+                    ) : null}
+
+                    <Button
+                      type="submit"
+                      variant="default"
+                      fullWidth
+                      loading={submitting}
+                      iconName="Lock"
+                      iconPosition="right"
+                    >
+                      Mettre a jour le mot de passe
+                    </Button>
+
+                    <div className="text-center">
+                      <Link to="/authentification" className="text-sm text-primary hover:underline">
+                        Retour a la connexion
+                      </Link>
+                    </div>
+                  </form>
+                ) : null}
+              </div>
+            </div>
+          </ActionCard>
         </div>
       </div>
     </>

@@ -6,18 +6,20 @@ import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
 import { Link, useNavigate } from 'react-router-dom';
 import { clearAdminAccess } from '../../utils/adminAccessGate';
+import adminService from '../../services/adminService';
 import seoRefreshQueueService from '../../services/seoRefreshQueueService';
 import platformAnalyticsService from '../../services/platformAnalyticsService';
+import adminBusinessObjectivesService from '../../services/adminBusinessObjectivesService';
 
 const SEO_QUEUE_STATUS_META = {
   pending: { label: 'En attente', color: 'text-amber-700 bg-amber-100', icon: 'Clock' },
   processing: { label: 'En cours', color: 'text-blue-700 bg-blue-100', icon: 'Loader2' },
-  failed: { label: 'Echec', color: 'text-red-700 bg-red-100', icon: 'AlertTriangle' },
+  failed: { label: 'Échec', color: 'text-red-700 bg-red-100', icon: 'AlertTriangle' },
   done: { label: 'Termine', color: 'text-green-700 bg-green-100', icon: 'CheckCircle2' }
 };
 
 const SEO_FAILURE_RESOLUTION_META = {
-  unresolved: { label: 'Non resolu', color: 'text-red-700 bg-red-100', icon: 'AlertOctagon' }
+  unresolved: { label: 'Non résolu', color: 'text-red-700 bg-red-100', icon: 'AlertOctagon' }
 };
 
 const formatDateTime = (value) => {
@@ -71,6 +73,10 @@ const toSafeNumber = (value) => {
   return parsed;
 };
 
+const roundTargetAmount = (value) => Math.max(0, Math.round(toSafeNumber(value)));
+
+const ceilTargetListingCount = (value) => Math.max(0, Math.ceil(toSafeNumber(value)));
+
 const formatIntegerWithSpaces = (value) => {
   if (value === null || value === undefined || value === '') return '';
   const number = Math.max(0, Math.round(toSafeNumber(value)));
@@ -106,37 +112,35 @@ const getYearProgressRate = () => {
 const buildLinkedObjectives = ({ source, value, metrics }) => {
   const listingCount = Math.max(0, toSafeNumber(metrics?.listingCount));
   const potentialAnnual = Math.max(0, toSafeNumber(metrics?.potentialPlatformRevenueAnnual));
-  const ytdRevenue = Math.max(0, toSafeNumber(metrics?.platformRevenueYtd));
   const potentialPerListing = listingCount > 0 ? (potentialAnnual / listingCount) : 0;
-  const inferredYtdRate = potentialAnnual > 0 ? (ytdRevenue / potentialAnnual) : 0;
-  const ytdRate = inferredYtdRate > 0 ? inferredYtdRate : getYearProgressRate();
+  const yearProgressRate = getYearProgressRate();
   const normalizedValue = Math.max(0, toSafeNumber(value));
 
   if (source === 'listingCount') {
     const nextPotentialAnnual = normalizedValue * potentialPerListing;
     return {
-      listingCount: Math.round(normalizedValue),
-      potentialPlatformRevenueAnnual: nextPotentialAnnual,
-      platformRevenueYtd: nextPotentialAnnual * ytdRate
+      listingCount: roundTargetAmount(normalizedValue),
+      potentialPlatformRevenueAnnual: roundTargetAmount(nextPotentialAnnual),
+      platformRevenueYtd: roundTargetAmount(nextPotentialAnnual * yearProgressRate)
     };
   }
 
   if (source === 'potentialPlatformRevenueAnnual') {
     const nextListingCount = potentialPerListing > 0 ? (normalizedValue / potentialPerListing) : 0;
     return {
-      listingCount: Math.round(nextListingCount),
-      potentialPlatformRevenueAnnual: normalizedValue,
-      platformRevenueYtd: normalizedValue * ytdRate
+      listingCount: ceilTargetListingCount(nextListingCount),
+      potentialPlatformRevenueAnnual: roundTargetAmount(normalizedValue),
+      platformRevenueYtd: roundTargetAmount(normalizedValue * yearProgressRate)
     };
   }
 
   if (source === 'platformRevenueYtd') {
-    const nextPotentialAnnual = ytdRate > 0 ? (normalizedValue / ytdRate) : 0;
+    const nextPotentialAnnual = yearProgressRate > 0 ? (normalizedValue / yearProgressRate) : 0;
     const nextListingCount = potentialPerListing > 0 ? (nextPotentialAnnual / potentialPerListing) : 0;
     return {
-      listingCount: Math.round(nextListingCount),
-      potentialPlatformRevenueAnnual: nextPotentialAnnual,
-      platformRevenueYtd: normalizedValue
+      listingCount: ceilTargetListingCount(nextListingCount),
+      potentialPlatformRevenueAnnual: roundTargetAmount(nextPotentialAnnual),
+      platformRevenueYtd: roundTargetAmount(normalizedValue)
     };
   }
 
@@ -146,6 +150,18 @@ const buildLinkedObjectives = ({ source, value, metrics }) => {
     platformRevenueYtd: null
   };
 };
+
+const normalizeObjectiveTargets = (targets = {}) => ({
+  listingCount: parseIntegerInput(targets?.listingCount),
+  potentialPlatformRevenueAnnual: parseIntegerInput(targets?.potentialPlatformRevenueAnnual),
+  platformRevenueYtd: parseIntegerInput(targets?.platformRevenueYtd)
+});
+
+const areObjectiveTargetsEqual = (left = {}, right = {}) => (
+  normalizeObjectiveTargets(left)?.listingCount === normalizeObjectiveTargets(right)?.listingCount
+  && normalizeObjectiveTargets(left)?.potentialPlatformRevenueAnnual === normalizeObjectiveTargets(right)?.potentialPlatformRevenueAnnual
+  && normalizeObjectiveTargets(left)?.platformRevenueYtd === normalizeObjectiveTargets(right)?.platformRevenueYtd
+);
 
 const AdminDashboard = () => {
   const navigate = useNavigate();
@@ -160,10 +176,21 @@ const AdminDashboard = () => {
     potentialPlatformRevenueAnnual: null,
     platformRevenueYtd: null
   });
+  const [savedObjectiveTargets, setSavedObjectiveTargets] = useState({
+    listingCount: null,
+    potentialPlatformRevenueAnnual: null,
+    platformRevenueYtd: null
+  });
+  const [objectivesLoading, setObjectivesLoading] = useState(true);
+  const [objectivesSaving, setObjectivesSaving] = useState(false);
+  const [objectivesError, setObjectivesError] = useState('');
+  const [objectivesStatusMessage, setObjectivesStatusMessage] = useState('');
+  const [objectivesUpdatedAt, setObjectivesUpdatedAt] = useState(null);
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     clearAdminAccess();
-    navigate('/admin', { replace: true });
+    const { data } = await adminService?.closeDedicatedAdminSession?.();
+    navigate(data?.restored ? '/accueil-recherche' : '/admin', { replace: true });
   };
 
   const loadOperationalInsights = async () => {
@@ -195,7 +222,7 @@ const AdminDashboard = () => {
       }
     } catch (error) {
       console.error('Erreur chargement dashboard admin (ops/analytics):', error);
-      setOpsError(error?.message || 'Impossible de charger les indicateurs operations/analytics');
+      setOpsError(error?.message || 'Impossible de charger les indicateurs opérations/analytics');
     } finally {
       setOpsLoading(false);
     }
@@ -203,7 +230,32 @@ const AdminDashboard = () => {
 
   useEffect(() => {
     loadOperationalInsights();
+    loadObjectiveTargets();
   }, []);
+
+  const loadObjectiveTargets = async () => {
+    try {
+      setObjectivesLoading(true);
+      setObjectivesError('');
+      setObjectivesStatusMessage('');
+
+      const { data, error } = await adminBusinessObjectivesService?.getObjectives?.();
+      if (error) throw error;
+
+      const normalizedTargets = normalizeObjectiveTargets(data || {});
+      setObjectiveTargets(normalizedTargets);
+      setSavedObjectiveTargets(normalizedTargets);
+      setObjectivesUpdatedAt(data?.updatedAt || null);
+    } catch (error) {
+      console.error('Erreur chargement objectifs dashboard admin:', error);
+      setObjectivesError(error?.message || 'Impossible de charger les objectifs enregistres');
+      setObjectiveTargets({ ...adminBusinessObjectivesService.EMPTY_OBJECTIVES });
+      setSavedObjectiveTargets({ ...adminBusinessObjectivesService.EMPTY_OBJECTIVES });
+      setObjectivesUpdatedAt(null);
+    } finally {
+      setObjectivesLoading(false);
+    }
+  };
 
   const menuItems = [
     {
@@ -229,7 +281,7 @@ const AdminDashboard = () => {
     },
     {
       id: 'moderate-listings',
-      label: 'Moderer les annonces',
+      label: 'Moderer les annonces et demandes',
       icon: 'FileCheck',
       path: '/administration-moderation',
       color: 'text-blue-600'
@@ -243,9 +295,17 @@ const AdminDashboard = () => {
     },
     {
       id: 'manage-categories',
-      label: 'Gérer les catégories',
-      icon: 'FolderOpen',
+      label: 'Catégories & sous-catégories',
+      icon: 'FolderTree',
       path: '/administration-categories',
+      color: 'text-blue-600'
+    },
+    {
+      id: 'object-image-library',
+      label: "Bibliothèque d'images",
+      subtitle: 'images génériques des demandes',
+      icon: 'ImagePlus',
+      path: '/administration-bibliotheque-images-demandes',
       color: 'text-blue-600'
     },
     {
@@ -299,6 +359,14 @@ const AdminDashboard = () => {
       color: 'text-blue-600'
     },
     {
+      id: 'user-testing-results',
+      label: 'Resultats des essais utilisateurs',
+      subtitle: 'participants / parcours / sessions',
+      icon: 'FlaskConical',
+      path: '/administration-resultats-essais',
+      color: 'text-blue-600'
+    },
+    {
       id: 'notifications',
       label: 'Gérer les notifications',
       icon: 'Bell',
@@ -306,15 +374,8 @@ const AdminDashboard = () => {
       color: 'text-blue-600'
     },
     {
-      id: 'moderate-requests',
-      label: 'Moderer les demandes',
-      icon: 'ClipboardCheck',
-      path: '/administration-moderation-demandes',
-      color: 'text-blue-600'
-    },
-    {
       id: 'inspection-disputes',
-      label: "Litiges etat des lieux",
+      label: "Litiges état des lieux",
       subtitle: 'moderation cautions / photos',
       icon: 'Gavel',
       path: '/administration-litiges-etat-des-lieux',
@@ -336,6 +397,9 @@ const AdminDashboard = () => {
   ];
 
   const handleObjectiveInputChange = (field, rawValue) => {
+    setObjectivesStatusMessage('');
+    setObjectivesError('');
+
     const normalized = String(rawValue || '').trim();
     if (!normalized) {
       setObjectiveTargets({
@@ -360,6 +424,38 @@ const AdminDashboard = () => {
     setObjectiveTargets(linked);
   };
 
+  const handleResetObjectives = () => {
+    setObjectiveTargets(normalizeObjectiveTargets(savedObjectiveTargets));
+    setObjectivesStatusMessage('');
+    setObjectivesError('');
+  };
+
+  const handleSaveObjectives = async () => {
+    try {
+      setObjectivesSaving(true);
+      setObjectivesError('');
+      setObjectivesStatusMessage('');
+
+      const normalizedTargets = normalizeObjectiveTargets(objectiveTargets);
+      const { data, error } = await adminBusinessObjectivesService?.saveObjectives?.(normalizedTargets);
+      if (error) throw error;
+
+      const savedTargets = normalizeObjectiveTargets(data || {});
+      setObjectiveTargets(savedTargets);
+      setSavedObjectiveTargets(savedTargets);
+      setObjectivesUpdatedAt(data?.updatedAt || null);
+      setObjectivesStatusMessage('Objectifs enregistrés avec succès');
+    } catch (error) {
+      console.error('Erreur sauvegarde objectifs dashboard admin:', error);
+      setObjectivesError(error?.message || 'Impossible de sauvegarder les objectifs');
+    } finally {
+      setObjectivesSaving(false);
+    }
+  };
+
+  const objectivesDirty = !areObjectiveTargetsEqual(objectiveTargets, savedObjectiveTargets);
+  const objectiveInputsDisabled = opsLoading || objectivesLoading || objectivesSaving || !businessSnapshot?.metrics;
+
   return (
     <div className="min-h-screen flex flex-col bg-surface">
       <Header />
@@ -380,7 +476,7 @@ const AdminDashboard = () => {
                 Actualiser stats
               </Button>
               <Button variant="danger" size="sm" onClick={handleLogout}>
-                Se deconnecter
+                Se déconnecter
               </Button>
             </div>
           </div>
@@ -395,11 +491,31 @@ const AdminDashboard = () => {
                 Basé sur les annonces publiées (commission plateforme 12%).
               </p>
             </div>
-            <div className="inline-flex items-center gap-2 rounded-full bg-surface px-3 py-1.5 text-xs text-muted-foreground">
-              <Icon name="CalendarClock" size={14} />
-              {businessSnapshot?.generatedAt ? `MAJ ${formatDateTime(businessSnapshot.generatedAt)}` : 'MAJ en attente'}
+            <div className="flex items-center gap-2 flex-wrap">
+              {objectivesUpdatedAt ? (
+                <div className="inline-flex items-center gap-2 rounded-full bg-surface px-3 py-1.5 text-xs text-muted-foreground">
+                  <Icon name="Save" size={14} />
+                  {`Objectifs enregistres le ${formatDateTime(objectivesUpdatedAt)}`}
+                </div>
+              ) : null}
+              <div className="inline-flex items-center gap-2 rounded-full bg-surface px-3 py-1.5 text-xs text-muted-foreground">
+                <Icon name="CalendarClock" size={14} />
+                {businessSnapshot?.generatedAt ? `MAJ ${formatDateTime(businessSnapshot.generatedAt)}` : 'MAJ en attente'}
+              </div>
             </div>
           </div>
+
+          {objectivesError && (
+            <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {objectivesError}
+            </div>
+          )}
+
+          {objectivesStatusMessage && (
+            <div className="mb-4 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+              {objectivesStatusMessage}
+            </div>
+          )}
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="rounded-lg border border-border bg-surface px-4 py-4">
@@ -414,6 +530,8 @@ const AdminDashboard = () => {
                   value={formatIntegerWithSpaces(objectiveTargets?.listingCount)}
                   onChange={(event) => handleObjectiveInputChange('listingCount', event?.target?.value)}
                   placeholder="Ex: 50"
+                  description="Nombre d'annonces actives que tu souhaites avoir."
+                  disabled={objectiveInputsDisabled}
                 />
               </div>
             </div>
@@ -434,12 +552,14 @@ const AdminDashboard = () => {
                   value={formatIntegerWithSpaces(objectiveTargets?.potentialPlatformRevenueAnnual)}
                   onChange={(event) => handleObjectiveInputChange('potentialPlatformRevenueAnnual', event?.target?.value)}
                   placeholder="Ex: 50 000"
+                  description="CA annuel théorique visé pour la plateforme."
+                  disabled={objectiveInputsDisabled}
                 />
               </div>
             </div>
 
             <div className="rounded-lg border border-border bg-surface px-4 py-4">
-              <p className="text-xs text-muted-foreground uppercase tracking-wide">CA realise depuis debut d'annee</p>
+              <p className="text-xs text-muted-foreground uppercase tracking-wide">CA encaissé depuis début d'année</p>
               <p className="mt-2 text-2xl font-bold text-foreground">
                 {formatCurrency(businessMetrics?.platformRevenueYtd)}
               </p>
@@ -450,18 +570,58 @@ const AdminDashboard = () => {
                 <Input
                   type="text"
                   inputMode="numeric"
-                  label="Objectif (EUR)"
+                  label="Objectif CA encaissé à date (EUR)"
                   value={formatIntegerWithSpaces(objectiveTargets?.platformRevenueYtd)}
                   onChange={(event) => handleObjectiveInputChange('platformRevenueYtd', event?.target?.value)}
                   placeholder="Ex: 10 000"
+                  description="Montant que tu veux avoir déjà encaissé depuis le 1er janvier, frais d'annulation encaissés inclus."
+                  disabled={objectiveInputsDisabled}
                 />
               </div>
             </div>
           </div>
 
-          <p className="mt-3 text-xs text-muted-foreground">
-            Saisis un objectif dans une case: les deux autres sont deduits automatiquement.
-          </p>
+          <div className="mt-4 rounded-lg border border-border bg-surface px-4 py-4">
+            <h3 className="text-sm font-semibold text-foreground">Comment lire ces 3 objectifs ?</h3>
+            <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3 text-sm text-muted-foreground">
+              <div>
+                <p className="font-medium text-foreground">Objectif annonces</p>
+                <p>Le volume d'offres actives que tu vises sur la plateforme.</p>
+              </div>
+              <div>
+                <p className="font-medium text-foreground">Objectif CA potentiel annuel</p>
+                <p>La projection annuelle si le parc d'annonces génère le même niveau moyen qu'aujourd'hui.</p>
+              </div>
+              <div>
+                <p className="font-medium text-foreground">Objectif CA encaissé à date</p>
+                <p>La cible de chiffre d'affaires que tu veux avoir déjà encaissée au prorata du temps écoulé depuis le 1er janvier, avec les frais d'annulation réellement encaissés.</p>
+              </div>
+            </div>
+            <div className="mt-4 flex items-center justify-between gap-3 flex-wrap">
+              <p className="text-xs text-muted-foreground">
+                Saisis un objectif dans une case: les deux autres sont deduits automatiquement à partir des performances actuelles.
+              </p>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleResetObjectives}
+                  disabled={!objectivesDirty || objectivesSaving}
+                >
+                  Annuler les modifications
+                </Button>
+                <Button
+                  size="sm"
+                  iconName="Save"
+                  onClick={handleSaveObjectives}
+                  loading={objectivesSaving}
+                  disabled={!objectivesDirty || objectiveInputsDisabled}
+                >
+                  Enregistrer les objectifs
+                </Button>
+              </div>
+            </div>
+          </div>
 
           <div className="mt-4 rounded-lg border border-border bg-surface px-4 py-4">
             <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -623,10 +783,10 @@ const AdminDashboard = () => {
             <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
               <div className="flex items-center gap-2">
                 <Icon name="AlertTriangle" size={16} className="text-red-600" />
-                <h3 className="font-semibold text-foreground">Echecs SEO non resolus</h3>
+                <h3 className="font-semibold text-foreground">Échecs SEO non résolus</h3>
               </div>
               <p className="text-xs text-muted-foreground">
-                Les echecs deja resolus sont masques. La carte Echec ci-dessus reflète uniquement ce reliquat.
+                Les échecs déjà résolus sont masqués. La carte Échec ci-dessus reflète uniquement ce reliquat.
               </p>
             </div>
 
@@ -640,12 +800,12 @@ const AdminDashboard = () => {
 
             <div className="rounded-lg border border-border overflow-hidden">
               <div className="flex items-center justify-between px-3 py-2 bg-surface border-b border-border gap-3">
-                <p className="text-sm font-medium text-foreground">Echecs non resolus</p>
-                <p className="text-xs text-muted-foreground">Seulement les echecs encore sans succes ulterieur.</p>
+                <p className="text-sm font-medium text-foreground">Échecs non résolus</p>
+                <p className="text-xs text-muted-foreground">Seulement les échecs encore sans succès ultérieur.</p>
               </div>
 
               {failureResolutionEntries.length === 0 ? (
-                <div className="px-3 py-4 text-sm text-muted-foreground">Aucun echec SEO non resolu.</div>
+                <div className="px-3 py-4 text-sm text-muted-foreground">Aucun échec SEO non résolu.</div>
               ) : (
                 <div className="divide-y divide-border">
                   {failureResolutionEntries.map((entry) => {
@@ -654,7 +814,7 @@ const AdminDashboard = () => {
                         <div className="flex items-start justify-between gap-3 flex-wrap">
                           <div className="min-w-0">
                             <p className="text-sm font-medium text-foreground">
-                              Echec #{entry?.id} · annonce {entry?.annonce_id || '-'}
+                    Échec #{entry?.id} · annonce {entry?.annonce_id || '-'}
                             </p>
                             <p className="text-xs text-muted-foreground break-all">
                               {entry?.source || '-'} · {entry?.reason || '-'}
@@ -757,5 +917,6 @@ const AdminDashboard = () => {
 };
 
 export default AdminDashboard;
+
 
 

@@ -10,6 +10,7 @@ import {
   openSocialShareWindows,
   shareOnInstagram
 } from '../../services/socialPromotionService';
+import { isAdminVerificationScenario } from '../../utils/adminVerificationContext';
 
 const PROMOTION_POPUP_STORAGE_KEY = 'ldv:listings:promotion-popup-seen';
 
@@ -64,7 +65,7 @@ const buildPromotionPrompt = (notification) => {
     message: String(
       notification?.message
       || payload?.message
-      || 'Le visuel et le lien sont deja prets. Partagez-la pour gagner en visibilite.'
+      || 'Le visuel et le lien sont déjà prêts. Partagez-la pour gagner en visibilité.'
     ).trim(),
     actionLink: String(payload?.actionLink || payload?.url || '/mes-annonces').trim(),
     shareTitle: String(payload?.share_title || payload?.annonce_title || payload?.title || '').trim(),
@@ -98,7 +99,9 @@ const ListingPromotionPopup = () => {
   const [currentNetworkIndex, setCurrentNetworkIndex] = useState(0);
   const [isVisible, setIsVisible] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [verificationMessage, setVerificationMessage] = useState('');
   const socialNetworks = useMemo(() => getSocialPromotionNetworks(), []);
+  const isVerificationPromotionScenario = isAdminVerificationScenario('owner_requester_listing_approved_promotion');
 
   const activePrompt = useMemo(
     () => buildPromotionPrompt(promotionNotification),
@@ -151,6 +154,25 @@ const ListingPromotionPopup = () => {
     };
 
     const loadPromotionNotifications = async () => {
+      if (isVerificationPromotionScenario) {
+        setPromotionNotification({
+          id: 'verification-promotion-notification',
+          type: notificationService?.TYPES?.ANNONCE_APPROVED,
+          message: 'Popup promotionnelle de verification.',
+          payload: {
+            promotion_ready: true,
+            annonce_title: 'Annonce de verification admin',
+            share_title: 'Annonce de verification admin',
+            share_description: 'Flux de promotion valide en mode admin.',
+            share_url: `${window.location?.origin || ''}/mes-annonces`,
+            image_url: '/assets/images/no_image.png',
+            social_networks: ['instagram', 'facebook']
+          }
+        });
+        setIsVisible(true);
+        return;
+      }
+
       if (loading || !user?.id) {
         resetPrompt();
         return;
@@ -194,7 +216,7 @@ const ListingPromotionPopup = () => {
       isMounted = false;
       notificationService?.unsubscribe(channel);
     };
-  }, [loading, user?.id]);
+  }, [isVerificationPromotionScenario, loading, user?.id]);
 
   const finalizePrompt = async () => {
     if (!promotionNotification?.id) {
@@ -246,6 +268,14 @@ const ListingPromotionPopup = () => {
     try {
       setIsSubmitting(true);
 
+      if (isVerificationPromotionScenario) {
+        const message = `Promotion ${currentNetwork?.label} simulée.`;
+        setVerificationMessage(message);
+        toast?.success(message);
+        await advanceToNextNetwork();
+        return;
+      }
+
       const sharePayload = buildActiveSharePayload();
 
       const result = currentNetwork?.id === 'instagram'
@@ -253,13 +283,13 @@ const ListingPromotionPopup = () => {
         : openSocialShareWindows([currentNetwork?.id], sharePayload);
 
       if (result?.total === 0 || result?.openedCount === 0) {
-        toast?.error(`Le navigateur a bloque l'ouverture de ${currentNetwork?.label}.`);
+        toast?.error(`Le navigateur a bloqué l'ouverture de ${currentNetwork?.label}.`);
         return;
       }
 
       if (currentNetwork?.id === 'instagram') {
         if (result?.copiedText) {
-          toast?.success('Legende Instagram copiee. Utilisez aussi le bouton pour telecharger le visuel.');
+          toast?.success('L?gende Instagram copi?e. Utilisez aussi le bouton pour t?l?charger le visuel.');
         } else {
           toast?.success("Instagram ouvert. Ajoutez maintenant votre visuel et le lien de l'annonce.");
         }
@@ -279,11 +309,16 @@ const ListingPromotionPopup = () => {
 
     try {
       setIsSubmitting(true);
+      if (isVerificationPromotionScenario) {
+        setVerificationMessage('Visuel promotionnel prêt pour la vérification.');
+        toast?.success('Visuel promotionnel prêt pour la vérification.');
+        return;
+      }
       const sharePayload = buildActiveSharePayload();
       const result = await downloadPromotionImage(sharePayload);
 
       if (result?.downloaded) {
-        toast?.success('Visuel Instagram telecharge.');
+        toast?.success('Visuel Instagram t?l?charg?.');
         return;
       }
 
@@ -292,10 +327,10 @@ const ListingPromotionPopup = () => {
         return;
       }
 
-      toast?.error('Impossible de recuperer le visuel pour le moment.');
+    toast?.error('Impossible de récupérer le visuel pour le moment.');
     } catch (error) {
-      console.error('Telechargement du visuel impossible:', error);
-      toast?.error(error?.message || 'Impossible de telecharger le visuel pour le moment.');
+      console.error('T?l?chargement du visuel impossible:', error);
+      toast?.error(error?.message || 'Impossible de t?l?charger le visuel pour le moment.');
     } finally {
       setIsSubmitting(false);
     }
@@ -372,6 +407,11 @@ const ListingPromotionPopup = () => {
             {currentNetwork?.id === 'instagram' ? (
               <p className="mt-1 text-[11px] leading-5 text-slate-500">
                 Ouvrez Instagram, collez la legende prete, puis publiez quand votre visuel est ajoute.
+              </p>
+            ) : null}
+            {verificationMessage ? (
+              <p className="mt-2 text-xs font-medium text-success" data-testid="listing-promotion-status">
+                {verificationMessage}
               </p>
             ) : null}
           </div>

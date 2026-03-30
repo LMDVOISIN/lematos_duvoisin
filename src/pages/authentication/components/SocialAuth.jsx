@@ -124,7 +124,7 @@ const SocialAuth = () => {
             )}
           </div>
           <p className="text-center text-xs text-muted-foreground">
-            En vous connectant avec un reseau social, un profil sera automatiquement cree.
+            En vous connectant avec un réseau social, un profil sera automatiquement créé.
           </p>
         </>
       ) : (

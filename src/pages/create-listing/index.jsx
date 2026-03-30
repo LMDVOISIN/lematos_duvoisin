@@ -382,6 +382,8 @@ const CreateListing = () => {
     { id: 6, label: 'Règles', icon: 'FileCheck' }
   ];
 
+  const currentStepLabel = steps?.find((step) => step?.id === currentStep)?.label || 'Informations';
+
   const updateFormData = (field, value) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
     if (errors?.[field]) {
@@ -407,6 +409,12 @@ const CreateListing = () => {
         break;
       case 4:
         if (!formData?.address?.trim()) newErrors.address = 'L\'adresse est requise';
+        if (!formData?.postalCode?.trim()) {
+          newErrors.postalCode = 'Le code postal est requis';
+        } else if (!/^\d{5}$/.test(String(formData?.postalCode || '')?.trim())) {
+          newErrors.postalCode = 'Le code postal doit contenir 5 chiffres';
+        }
+        if (!formData?.city?.trim()) newErrors.city = 'La ville est requise';
         break;
       case 5:
         if (!Array.isArray(formData?.pickupDays) || formData?.pickupDays?.length === 0) {
@@ -589,17 +597,12 @@ const CreateListing = () => {
   return (
     <div className="min-h-screen flex flex-col bg-surface">
       <Header />
-      <main ref={wizardTopRef} className="main-content flex-1 container mx-auto px-4 pt-6 pb-8 md:pt-8 md:pb-32">
+      <main ref={wizardTopRef} className="main-content flex-1 container mx-auto px-4 pb-8 md:pb-32">
         {/* En-tête de page */}
-        <div className="mb-6">
-          <h1 className="text-2xl md:text-3xl font-bold text-foreground mb-2">
+        <div className="mb-6 rounded-3xl border border-[#17a2b8]/15 bg-gradient-to-r from-[#ecfeff] via-white to-[#eef6ff] p-5 shadow-elevation-1 md:p-6">
+          <h1 className="text-2xl font-bold text-foreground md:text-3xl">
             {isEditMode ? 'Modifier une annonce' : 'Créer une annonce'}
           </h1>
-          <p className="text-muted-foreground">
-            {isEditMode
-              ? 'Mettez à jour votre annonce puis soumettez-la à nouveau'
-              : 'Partagez votre matériel avec la communauté'}
-          </p>
         </div>
 
         {loadingAnnonce ? (
@@ -644,10 +647,9 @@ const CreateListing = () => {
                 </React.Fragment>
               ))}
             </div>
-            <div className="text-center mt-4">
-              <p className="text-sm text-muted-foreground">
-                ?tape {currentStep} sur {steps?.length}
-              </p>
+            <div className="mt-4 flex items-center justify-between text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              <span>Étape {currentStep}/{steps?.length}</span>
+              <span>{currentStepLabel}</span>
             </div>
           </div>
 
@@ -658,7 +660,7 @@ const CreateListing = () => {
 
           {/* Navigation Buttons (fixed action bar) */}
           <div className="mt-2 rounded-lg border border-border bg-white/95 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] md:fixed md:inset-x-0 md:bottom-0 md:z-40 md:mt-0 md:rounded-none md:border-x-0 md:border-b-0 md:backdrop-blur">
-            <div className="container mx-auto px-3 py-3 md:px-4 md:py-4">
+            <div className="container mx-auto px-3 py-3 md:px-4 md:py-4 md:pr-24 lg:pr-28">
               <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
                 <div className="flex flex-wrap gap-3 w-full sm:w-auto">
                   {currentStep > 1 && (

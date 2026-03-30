@@ -102,7 +102,7 @@ Nonce anti-repetition: ${nonce}`;
 
   const handleGenerateReason = async () => {
     if (!category) {
-      window?.alert('Veuillez selectionner une categorie de refus avant de generer un texte');
+      window?.alert('Veuillez sélectionner une catégorie de refus avant de générer un texte');
       return;
     }
 
@@ -116,15 +116,15 @@ Nonce anti-repetition: ${nonce}`;
 
   const handleSubmit = () => {
     if (!category || !reason?.trim()) {
-      window?.alert('Veuillez selectionner une categorie et fournir une raison');
+      window?.alert('Veuillez sélectionner une catégorie et fournir une raison');
       return;
     }
     onSubmit(reason);
   };
 
   return (
-    <div className="fixed inset-0 z-modal flex items-center justify-center p-4 bg-black/50">
-      <div className="bg-white rounded-lg shadow-elevation-4 max-w-md w-full">
+    <div className="modal-viewport z-modal bg-black/50">
+      <div className="modal-card modal-card-shell max-w-md rounded-lg bg-white shadow-elevation-4">
         <div className="border-b border-border px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Icon name="XCircle" size={20} className="text-error" />
@@ -140,7 +140,7 @@ Nonce anti-repetition: ${nonce}`;
           </button>
         </div>
 
-        <div className="p-6 space-y-4">
+        <div className="modal-card-body p-6 space-y-4">
           <p className="text-sm text-muted-foreground">
             Veuillez indiquer la raison du refus. Cette information sera communiquee au propriétaire.
           </p>
@@ -182,7 +182,7 @@ Nonce anti-repetition: ${nonce}`;
             <textarea
               value={reason}
               onChange={(e) => setReason(e?.target?.value || '')}
-              placeholder="Expliquez en detail pourquoi cette annonce est refusee..."
+              placeholder="Expliquez en détail pourquoi cette annonce est refusée..."
               rows={5}
               className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 resize-none"
             />

@@ -117,6 +117,8 @@ export const checkMissingDocuments = async () => {
       processed: 0,
       cancelled: 0,
       refunded: 0,
+      ownerPayoutReleased: 0,
+      ownerPayoutPending: 0,
       depositReleased: 0,
       skipped: 0,
       errors: []
@@ -169,11 +171,25 @@ export const checkMissingDocuments = async () => {
 
         const chargedAmount = Math.max(0, Number(refundData?.chargedAmountEuros || 0) || 0);
         const refundAmount = Math.max(0, Number(refundData?.refundAmountEuros || 0) || 0);
+        const cancellationFeeAmount = Math.max(0, Number(refundData?.cancellationFeeAmount || 0) || 0);
+        const ownerPayoutAmount = Math.max(0, Number(refundData?.ownerPayoutAmountEuros || 0) || 0);
         const cancellationReason = [
           "CNI non importée dans les délais avant la remise.",
           `1 jour facturé (${chargedAmount?.toFixed(2)} EUR).`,
-          `Remboursement du reste (${refundAmount?.toFixed(2)} EUR).`
-        ]?.join(' ');
+          refundAmount > 0
+            ? `Remboursement locataire: ${refundAmount?.toFixed(2)} EUR apres ${cancellationFeeAmount?.toFixed(2)} EUR de frais conserves.`
+            : 'Aucun remboursement locataire restant.',
+          ownerPayoutAmount > 0
+            ? `Versement proprietaire cible: ${ownerPayoutAmount?.toFixed(2)} EUR net.`
+            : null
+        ]?.filter(Boolean)?.join(' ');
+
+        const ownerPayoutStatus = String(refundData?.ownerPayoutStatus || '')?.toLowerCase();
+        if (ownerPayoutStatus === 'succeeded') {
+          results.ownerPayoutReleased += 1;
+        } else if (ownerPayoutStatus) {
+          results.ownerPayoutPending += 1;
+        }
 
         const { error: cancelError } = await reservationService?.updateReservationStatus(reservation?.id, 'cancelled', {
           cancellation_reason: cancellationReason,
@@ -215,6 +231,149 @@ export const checkMissingDocuments = async () => {
 };
 
 /**
+ * Cancel paid reservations whose end date has passed without any handover/start.
+ * Business rule:
+ * - reservation is cancelled
+ * - first day stays allocated to the owner (minus normal owner fees)
+ * - remaining days are refunded to the renter minus cancellation fees
+ */
+export const cancelOverduePaidReservations = async () => {
+  try {
+    const today = new Date();
+    const todayDateOnly = today?.toISOString()?.slice(0, 10);
+    const results = {
+      success: true,
+      processed: 0,
+      cancelled: 0,
+      refunded: 0,
+      ownerPayoutReleased: 0,
+      ownerPayoutPending: 0,
+      skipped: 0,
+      errors: []
+    };
+
+    const { data: reservations, error } = await supabase
+      ?.from('reservations')
+      ?.select('id, status, start_date, end_date, total_price, pickup_handover_confirmed_at, pickup_rental_started_at')
+      ?.eq('status', 'paid')
+      ?.lt('end_date', todayDateOnly)
+      ?.is('pickup_handover_confirmed_at', null)
+      ?.is('pickup_rental_started_at', null);
+
+    if (error) throw error;
+    if (!reservations?.length) return results;
+
+    for (const reservation of reservations || []) {
+      results.processed += 1;
+
+      try {
+        const { data, error: invokeError } = await supabase.functions.invoke('cancel-overdue-paid-reservation', {
+          body: {
+            reservationId: reservation?.id,
+            compensationDays: 1
+          }
+        });
+
+        if (invokeError) {
+          throw new Error(invokeError?.message || "Annulation automatique impossible");
+        }
+
+        if (data?.skipped) {
+          results.skipped += 1;
+          continue;
+        }
+
+        results.cancelled += 1;
+        if (Number(data?.refundAmount || 0) > 0) {
+          results.refunded += 1;
+        }
+
+        if (String(data?.ownerPayoutStatus || '')?.toLowerCase() === 'succeeded') {
+          results.ownerPayoutReleased += 1;
+        } else if (String(data?.ownerPayoutStatus || '')?.trim()) {
+          results.ownerPayoutPending += 1;
+        }
+      } catch (err) {
+        results?.errors?.push({ reservationId: reservation?.id, error: err?.message });
+      }
+    }
+
+    results.success = results?.errors?.length === 0;
+    return results;
+  } catch (error) {
+    console.error('Erreur dans cancelOverduePaidReservations:', error);
+    throw error;
+  }
+};
+
+/**
+ * Complete paid reservations whose rental period has ended.
+ * Excludes "paid" reservations with no sign of pickup/handover, which are handled by
+ * the overdue no-handover cancellation workflow.
+ */
+export const completeFinishedReservations = async () => {
+  try {
+    const now = new Date();
+    const todayDateOnly = now?.toISOString()?.slice(0, 10);
+    const nowIso = now?.toISOString();
+    const results = {
+      success: true,
+      processed: 0,
+      completed: 0,
+      skipped: 0,
+      errors: []
+    };
+
+    const { data: reservations, error } = await supabase
+      ?.from('reservations')
+      ?.select('id, status, end_date, completed_at, pickup_handover_confirmed_at, pickup_rental_started_at')
+      ?.in('status', ['paid', 'active', 'ongoing'])
+      ?.lt('end_date', todayDateOnly)
+      ?.is('completed_at', null);
+
+    if (error) throw error;
+    if (!reservations?.length) return results;
+
+    for (const reservation of reservations || []) {
+      results.processed += 1;
+
+      try {
+        const normalizedStatus = String(reservation?.status || '')?.toLowerCase();
+        const hasStarted = Boolean(
+          reservation?.pickup_handover_confirmed_at
+          || reservation?.pickup_rental_started_at
+        );
+
+        if (normalizedStatus === 'paid' && !hasStarted) {
+          results.skipped += 1;
+          continue;
+        }
+
+        const { error: updateError } = await supabase
+          ?.from('reservations')
+          ?.update({
+            status: 'completed',
+            completed_at: nowIso,
+            updated_at: nowIso
+          })
+          ?.eq('id', reservation?.id);
+
+        if (updateError) throw updateError;
+        results.completed += 1;
+      } catch (err) {
+        results?.errors?.push({ reservationId: reservation?.id, error: err?.message });
+      }
+    }
+
+    results.success = results?.errors?.length === 0;
+    return results;
+  } catch (error) {
+    console.error('Erreur dans completeFinishedReservations:', error);
+    throw error;
+  }
+};
+
+/**
  * Cancel unpaid reservations after payment deadline
  */
 export const cancelUnpaidReservations = async () => {
@@ -227,7 +386,12 @@ export const cancelUnpaidReservations = async () => {
       errors: []
     };
 
-    const { data: reservations, error } = await supabase?.from('reservations')?.select('*')?.eq('status', 'accepted')?.is('paid_at', null)?.lt('payment_deadline', now?.toISOString());
+    const { data: reservations, error } = await supabase
+      ?.from('reservations')
+      ?.select('*')
+      ?.in('status', ['pending', 'accepted'])
+      ?.is('paid_at', null)
+      ?.lt('payment_deadline', now?.toISOString());
 
     if (error) {
       const message = String(error?.message || '');
@@ -327,6 +491,37 @@ export const rotateStrategyBDepositAuthorizations = async ({ limit = 100, safety
   }
 };
 
+export const syncOwnerPayouts = async ({ ownerId = null, reservationId = null, limit = 100 } = {}) => {
+  try {
+    const body = { limit };
+
+    if (ownerId) {
+      body.ownerId = ownerId;
+    }
+
+    if (reservationId) {
+      body.reservationId = reservationId;
+    }
+
+    const { data, error } = await supabase.functions.invoke('sync-owner-payouts', {
+      body
+    });
+
+    if (error) throw error;
+    return data || {
+      ok: true,
+      retriedPending: 0,
+      createdRentalPayouts: 0,
+      createdDepositPayouts: 0,
+      reservations: [],
+      errors: []
+    };
+  } catch (error) {
+    console.error('Erreur dans syncOwnerPayouts:', error);
+    throw error;
+  }
+};
+
 /**
  * Process 24h dispute windows for inspection-based final settlement.
  * - no dispute: marks internal settlement as released
@@ -340,6 +535,8 @@ export const processInspectionSettlementWindows = async () => {
       frozen: 0,
       refundCandidates: 0,
       refunded: 0,
+      ownerPayoutReleased: 0,
+      ownerPayoutPending: 0,
       cleanupErrors: [],
       refundErrors: []
     };
@@ -376,6 +573,13 @@ export const processInspectionSettlementWindows = async () => {
           const refundStatus = String(refundData?.refundStatus || '').toLowerCase();
           if (refundStatus === 'succeeded' || refundStatus === 'pending' || refundStatus === 'not_required') {
             results.refunded += 1;
+          }
+
+          const ownerPayoutStatus = String(refundData?.ownerPayoutStatus || '').toLowerCase();
+          if (ownerPayoutStatus === 'succeeded') {
+            results.ownerPayoutReleased += 1;
+          } else if (ownerPayoutStatus) {
+            results.ownerPayoutPending += 1;
           }
         }
       } catch (refundInvokeError) {
@@ -623,6 +827,18 @@ export const runAllAutomations = async () => {
   }
 
   try {
+    results.overduePaidReservations = await cancelOverduePaidReservations();
+  } catch (error) {
+    results.overduePaidReservations = { error: error?.message };
+  }
+
+  try {
+    results.finishedReservations = await completeFinishedReservations();
+  } catch (error) {
+    results.finishedReservations = { error: error?.message };
+  }
+
+  try {
     results.unpaidReservations = await cancelUnpaidReservations();
   } catch (error) {
     results.unpaidReservations = { error: error?.message };
@@ -638,6 +854,12 @@ export const runAllAutomations = async () => {
     results.inspectionSettlementWindows = await processInspectionSettlementWindows();
   } catch (error) {
     results.inspectionSettlementWindows = { error: error?.message };
+  }
+
+  try {
+    results.ownerPayoutSync = await syncOwnerPayouts({ limit: 200 });
+  } catch (error) {
+    results.ownerPayoutSync = { error: error?.message };
   }
 
   try {
@@ -677,9 +899,12 @@ export const runAllAutomations = async () => {
 const automationService = {
   checkOwnerNoResponse,
   checkMissingDocuments,
+  cancelOverduePaidReservations,
+  completeFinishedReservations,
   cancelUnpaidReservations,
   releaseDeposits,
   rotateStrategyBDepositAuthorizations,
+  syncOwnerPayouts,
   processInspectionSettlementWindows,
   sendReturnReminders,
   processStrikes,

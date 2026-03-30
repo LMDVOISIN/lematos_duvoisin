@@ -58,6 +58,8 @@ const toSafeNumber = (value) => {
   return parsed;
 };
 
+const roundMoney = (value) => Math.round(toSafeNumber(value) * 100) / 100;
+
 const lower = (value) => String(value || '').trim().toLowerCase();
 
 const extractMissingColumnName = (error) => {
@@ -158,6 +160,74 @@ const isReservationPaidFallback = (reservation) => {
 const getStartOfYear = () => {
   const now = new Date();
   return new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
+};
+
+const toValidDate = (value) => {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date?.getTime())) return null;
+  return date;
+};
+
+const getAdjustmentSummary = (reservation) => {
+  const rawSummary = reservation?.adjustment_summary;
+  if (!rawSummary) return null;
+
+  if (typeof rawSummary === 'string') {
+    try {
+      const parsed = JSON.parse(rawSummary);
+      return parsed && typeof parsed === 'object' ? parsed : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  return rawSummary && typeof rawSummary === 'object' ? rawSummary : null;
+};
+
+const getReservationRevenueDate = (reservation) => {
+  const paidAtDate = getPaidAtDate(reservation);
+  if (paidAtDate) return paidAtDate;
+
+  if (!isReservationPaidFallback(reservation)) return null;
+  return toValidDate(reservation?.created_at);
+};
+
+const isDateOnOrAfter = (value, threshold) => {
+  const date = value instanceof Date ? value : toValidDate(value);
+  return Boolean(date && threshold && date >= threshold);
+};
+
+const getOwnerCancellationRevenueContribution = (adjustmentSummary, startOfYear) => {
+  const ownerCancellationFeeAmount = Math.max(
+    0,
+    toSafeNumber(adjustmentSummary?.ownerCancellationFeeAmount || adjustmentSummary?.cancellationFeeAmount),
+  );
+  const ownerFeePaidAt = adjustmentSummary?.ownerCancellationFeePaidAt;
+
+  if (ownerCancellationFeeAmount <= 0 || !isDateOnOrAfter(ownerFeePaidAt, startOfYear)) {
+    return 0;
+  }
+
+  return ownerCancellationFeeAmount;
+};
+
+const getReservationPlatformRevenueContribution = (reservation, startOfYear) => {
+  if (!isDateOnOrAfter(getReservationRevenueDate(reservation), startOfYear)) {
+    return 0;
+  }
+
+  const currentRentalAmount = Math.max(0, toSafeNumber(reservation?.total_price));
+  const baseReservationRevenue = currentRentalAmount * PLATFORM_COMMISSION_RATE;
+  const adjustmentSummary = getAdjustmentSummary(reservation);
+  const cancellationFeeAmount = Math.max(0, toSafeNumber(adjustmentSummary?.cancellationFeeAmount));
+  const initiatedByRole = lower(adjustmentSummary?.initiatedByRole);
+
+  if (initiatedByRole === 'owner') {
+    return roundMoney(baseReservationRevenue + getOwnerCancellationRevenueContribution(adjustmentSummary, startOfYear));
+  }
+
+  return roundMoney(baseReservationRevenue + cancellationFeeAmount);
 };
 
 const platformAnalyticsService = {
@@ -290,7 +360,7 @@ const platformAnalyticsService = {
         listingAttempts += 1;
       }
 
-      let reservationsSelect = 'id, total_price, paid_at, tenant_payment_paid_at, status, created_at';
+      let reservationsSelect = 'id, total_price, paid_at, tenant_payment_paid_at, status, created_at, adjustment_summary';
       let reservationAttempts = 0;
       let reservationsRows = [];
 
@@ -336,6 +406,34 @@ const platformAnalyticsService = {
         reservationAttempts += 1;
       }
 
+      let ownerCancellationSelect = 'id, paid_at, tenant_payment_paid_at, status, created_at, adjustment_summary';
+      let ownerCancellationAttempts = 0;
+      let ownerCancellationRows = [];
+
+      while (ownerCancellationAttempts < 8) {
+        const rowsRes = await loadRowsPaginated(
+          (from, to) => supabase
+            ?.from(RESERVATIONS_TABLE)
+            ?.select(ownerCancellationSelect)
+            ?.order('id', { ascending: true })
+            ?.range(from, to),
+          { maxPages }
+        );
+
+        if (!rowsRes?.error) {
+          ownerCancellationRows = Array.isArray(rowsRes?.data) ? rowsRes.data : [];
+          break;
+        }
+
+        const missingColumn = extractMissingColumnName(rowsRes?.error);
+        if (!missingColumn || !String(ownerCancellationSelect)?.toLowerCase()?.includes(String(missingColumn)?.toLowerCase())) {
+          return { data: null, error: rowsRes?.error };
+        }
+
+        ownerCancellationSelect = removeColumnFromSelect(ownerCancellationSelect, missingColumn);
+        ownerCancellationAttempts += 1;
+      }
+
       const liveListings = (listingsRows || []).filter((row) => {
         const listingType = lower(row?.type);
         const isOffer = !listingType || listingType === 'offre';
@@ -346,23 +444,22 @@ const platformAnalyticsService = {
       const potentialGrossAnnual = totalDailyPrice * DAYS_PER_YEAR;
       const potentialPlatformRevenueAnnual = potentialGrossAnnual * PLATFORM_COMMISSION_RATE;
 
-      const ytdPaidGross = (reservationsRows || []).reduce((sum, row) => {
-        const totalPrice = Math.max(0, toSafeNumber(row?.total_price));
-        if (totalPrice <= 0) return sum;
-
-        const paidAtDate = getPaidAtDate(row);
-        if (paidAtDate) {
-          return paidAtDate >= startOfYear ? sum + totalPrice : sum;
+      const currentYearReservationRevenue = roundMoney((reservationsRows || []).reduce((sum, row) => (
+        sum + getReservationPlatformRevenueContribution(row, startOfYear)
+      ), 0));
+      const legacyOwnerCancellationRevenueYtd = roundMoney((ownerCancellationRows || []).reduce((sum, row) => {
+        if (isDateOnOrAfter(getReservationRevenueDate(row), startOfYear)) {
+          return sum;
         }
 
-        if (!isReservationPaidFallback(row)) return sum;
+        const adjustmentSummary = getAdjustmentSummary(row);
+        if (lower(adjustmentSummary?.initiatedByRole) !== 'owner') {
+          return sum;
+        }
 
-        const createdAt = new Date(row?.created_at || 0);
-        if (Number.isNaN(createdAt?.getTime()) || createdAt < startOfYear) return sum;
-        return sum + totalPrice;
-      }, 0);
-
-      const platformRevenueYtd = ytdPaidGross * PLATFORM_COMMISSION_RATE;
+        return sum + getOwnerCancellationRevenueContribution(adjustmentSummary, startOfYear);
+      }, 0));
+      const platformRevenueYtd = roundMoney(currentYearReservationRevenue + legacyOwnerCancellationRevenueYtd);
       const attainmentRateYtd = potentialPlatformRevenueAnnual > 0
         ? Number(((platformRevenueYtd / potentialPlatformRevenueAnnual) * 100).toFixed(2))
         : 0;

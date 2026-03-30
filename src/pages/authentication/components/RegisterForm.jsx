@@ -4,31 +4,42 @@ import toast from 'react-hot-toast';
 import { useAuth } from '../../../contexts/AuthContext';
 import Input from '../../../components/ui/Input';
 import Button from '../../../components/ui/Button';
+import CommuneAutocompleteFields from '../../../components/ui/CommuneAutocompleteFields';
 import { Checkbox } from '../../../components/ui/Checkbox';
 import LegalModal from './LegalModal';
 import CGUContent from './CGUContent';
 import RGPDContent from './RGPDContent';
 import { getBestKnownCity, getStoredCity, setStoredCity } from '../../../utils/cityPrefill';
+import {
+  getStoredSharedProfile,
+  mergeStoredSharedProfile,
+  splitAddressLine
+} from '../../../utils/sharedProfilePrefill';
 import { clearAuthRedirectPath, resolveAuthRedirectPath } from '../../../utils/authRedirect';
 
 const RegisterForm = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { signUp } = useAuth();
-  const [formData, setFormData] = useState(() => ({
-    firstName: '',
-    lastName: '',
-    pseudonym: '',
-    email: '',
-    streetNumber: '',
-    streetName: '',
-    postalCode: '',
-    city: getStoredCity(),
-    password: '',
-    confirmPassword: '',
-    acceptTerms: false,
-    acceptRGPD: false
-  }));
+  const [formData, setFormData] = useState(() => {
+    const sharedProfile = getStoredSharedProfile();
+    const parsedAddress = splitAddressLine(sharedProfile?.addressLine1);
+
+    return {
+      firstName: sharedProfile?.firstName || '',
+      lastName: sharedProfile?.lastName || '',
+      pseudonym: sharedProfile?.pseudonym || '',
+      email: sharedProfile?.email || '',
+      streetNumber: parsedAddress?.streetNumber || '',
+      streetName: parsedAddress?.streetName || '',
+      postalCode: sharedProfile?.postalCode || '',
+      city: getBestKnownCity(sharedProfile?.city, getStoredCity()),
+      password: '',
+      confirmPassword: '',
+      acceptTerms: false,
+      acceptRGPD: false
+    };
+  });
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
   const [addressSuggestions, setAddressSuggestions] = useState([]);
@@ -87,9 +98,8 @@ const RegisterForm = () => {
     }
   };
 
-  const handlePostalCodeChange = (e) => {
-    const rawValue = String(e?.target?.value || '');
-    const normalizedPostalCode = rawValue?.replace(/\D/g, '')?.slice(0, 5);
+  const handlePostalCodeValueChange = (value) => {
+    const normalizedPostalCode = String(value || '')?.replace(/\D/g, '')?.slice(0, 5);
 
     setFormData((prev) => ({
       ...prev,
@@ -98,6 +108,19 @@ const RegisterForm = () => {
 
     if (errors?.postalCode) {
       setErrors((prev) => ({ ...prev, postalCode: '' }));
+    }
+  };
+
+  const handleCityValueChange = (value) => {
+    setFormData((prev) => ({
+      ...prev,
+      city: value
+    }));
+
+    setStoredCity(value);
+
+    if (errors?.city) {
+      setErrors((prev) => ({ ...prev, city: '' }));
     }
   };
 
@@ -352,6 +375,18 @@ const RegisterForm = () => {
       }
 
       if (!data?.session) {
+        mergeStoredSharedProfile({
+          firstName: formData?.firstName,
+          lastName: formData?.lastName,
+          pseudonym: formData?.pseudonym,
+          email: formData?.email,
+          addressLine1: [
+            String(formData?.streetNumber || '')?.trim(),
+            String(formData?.streetName || '')?.trim()
+          ]?.filter(Boolean)?.join(' '),
+          postalCode: formData?.postalCode,
+          city: formData?.city
+        });
         setStoredCity(formData?.city);
         toast?.success('Compte créé. Vérifiez votre e-mail pour activer le compte.', {
           duration: 5000,
@@ -362,6 +397,18 @@ const RegisterForm = () => {
           navigate('/authentification');
         }, 1500);
       } else {
+        mergeStoredSharedProfile({
+          firstName: formData?.firstName,
+          lastName: formData?.lastName,
+          pseudonym: formData?.pseudonym,
+          email: formData?.email,
+          addressLine1: [
+            String(formData?.streetNumber || '')?.trim(),
+            String(formData?.streetName || '')?.trim()
+          ]?.filter(Boolean)?.join(' '),
+          postalCode: formData?.postalCode,
+          city: formData?.city
+        });
         setStoredCity(formData?.city);
         toast?.success('Compte créé avec succès ! Bienvenue sur Le Matos du Voisin', {
           duration: 4000,
@@ -507,31 +554,20 @@ const RegisterForm = () => {
           )}
         </div>
 
-        <Input
-          label="Code postal"
-          type="text"
-          name="postalCode"
-          placeholder="Ex: 75002"
-          value={formData?.postalCode}
-          onChange={handlePostalCodeChange}
-          error={errors?.postalCode}
-          description="Saisissez 5 chiffres."
-          inputMode="numeric"
-          autoComplete="postal-code"
-          maxLength={5}
-          required
-        />
-
-        <Input
-          label="Ville"
-          type="text"
-          name="city"
-          placeholder="Ex: Neuilly-sur-Seine"
-          value={formData?.city}
-          onChange={handleChange}
-          error={errors?.city}
-          autoComplete="address-level2"
-          required
+        <CommuneAutocompleteFields
+          cityValue={formData?.city}
+          postalCodeValue={formData?.postalCode}
+          onCityChange={handleCityValueChange}
+          onPostalCodeChange={handlePostalCodeValueChange}
+          cityError={errors?.city}
+          postalCodeError={errors?.postalCode}
+          cityName="city"
+          postalCodeName="postalCode"
+          cityPlaceholder="Ex: Neuilly-sur-Seine"
+          postalCodePlaceholder="Ex: 75002"
+          cityRequired
+          postalCodeRequired
+          postalCodeDescription="Saisissez 5 chiffres."
         />
 
         <Input

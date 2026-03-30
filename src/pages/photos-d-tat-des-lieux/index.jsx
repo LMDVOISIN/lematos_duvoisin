@@ -14,6 +14,8 @@ import photoService from '../../services/photoService';
 import storageService from '../../services/storageService';
 import inspectionService from '../../services/inspectionService';
 import { useAuth } from '../../contexts/AuthContext';
+import { PICKUP_READY_RESERVATION_STATUSES } from '../../utils/reservationStatus';
+import { isAdminVerificationScenario } from '../../utils/adminVerificationContext';
 
 const isAbsoluteUrl = (value) => /^https?:\/\//i.test(String(value || ''));
 
@@ -72,6 +74,10 @@ const PhotosEtatDesLieux = () => {
   const { reservationId } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const isVerificationDisputeScenario = isAdminVerificationScenario(
+    'booking_dispute_and_deposit',
+    'booking_pickup_day'
+  );
 
   const [activeView, setActiveView] = useState('upload');
   const [loading, setLoading] = useState(true);
@@ -88,6 +94,7 @@ const PhotosEtatDesLieux = () => {
   const [openingDispute, setOpeningDispute] = useState(false);
   const [cautionActionLoading, setCautionActionLoading] = useState(false);
   const [presencePopupDismissedByPhase, setPresencePopupDismissedByPhase] = useState({});
+  const [verificationDisputeStatus, setVerificationDisputeStatus] = useState('');
 
   const resolveReservationPhotoUrl = async (photoUrl) => {
     if (!photoUrl) return '/assets/images/no_image.png';
@@ -121,7 +128,7 @@ const PhotosEtatDesLieux = () => {
 
   const loadPageData = async () => {
     if (!reservationId) {
-      setError('Reservation introuvable.');
+      setError('Réservation introuvable.');
       setLoading(false);
       return;
     }
@@ -129,6 +136,56 @@ const PhotosEtatDesLieux = () => {
     try {
       setLoading(true);
       setError('');
+
+      if (isVerificationDisputeScenario) {
+        setReservation({
+          id: reservationId || 'verification-reservation',
+          owner_id: user?.id || 'verification-owner',
+          renter_id: 'verification-renter',
+          status: 'active',
+          caution_amount: 250,
+          deposit_status: 'authorized',
+          annonce: {
+            titre: 'Etat des lieux de verification',
+            caution: 250
+          }
+        });
+        setBeforePhotos([
+          {
+            id: 'verification-before-photo',
+            url: '/assets/images/no_image.png',
+            raw: { taken_by: 'owner', phase: 'start' }
+          }
+        ]);
+        setAfterPhotos([
+          {
+            id: 'verification-after-photo',
+            url: '/assets/images/no_image.png',
+            raw: { taken_by: 'renter', phase: 'end' }
+          }
+        ]);
+        setInspectionSessions({
+          start: {
+            phase: 'start',
+            owner_presence_confirmed_at: new Date().toISOString(),
+            renter_presence_confirmed_at: new Date().toISOString(),
+            closed_at: new Date().toISOString()
+          },
+          end: {
+            phase: 'end',
+            owner_presence_confirmed_at: new Date().toISOString(),
+            renter_presence_confirmed_at: new Date().toISOString(),
+            closed_at: new Date().toISOString(),
+            contest_window_ends_at: new Date(Date.now() + (24 * 60 * 60 * 1000)).toISOString()
+          }
+        });
+        setInspectionSettlement({
+          status: 'hold_24h',
+          payment_hold_status: 'held'
+        });
+        setInspectionDisputes([]);
+        return;
+      }
 
       const [
         { data: reservationData, error: reservationError },
@@ -156,7 +213,7 @@ const PhotosEtatDesLieux = () => {
         setInspectionSessions({});
         setInspectionSettlement(null);
         setInspectionDisputes([]);
-        setError('Reservation introuvable.');
+        setError('Réservation introuvable.');
         return;
       }
 
@@ -192,14 +249,14 @@ const PhotosEtatDesLieux = () => {
       setInspectionSettlement(settlementData || null);
       setInspectionDisputes(disputesWithSelections || []);
     } catch (loadError) {
-      console.error("Erreur de chargement des photos d'etat des lieux:", loadError);
+      console.error("Erreur de chargement des photos d'état des lieux:", loadError);
       setReservation(null);
       setBeforePhotos([]);
       setAfterPhotos([]);
       setInspectionSessions({});
       setInspectionSettlement(null);
       setInspectionDisputes([]);
-      setError(loadError?.message || "Impossible de charger les photos d'etat des lieux.");
+      setError(loadError?.message || "Impossible de charger les photos d'état des lieux.");
     } finally {
       setLoading(false);
     }
@@ -208,11 +265,29 @@ const PhotosEtatDesLieux = () => {
   useEffect(() => {
     loadPageData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reservationId]);
+  }, [isVerificationDisputeScenario, reservationId, user?.id]);
 
   useEffect(() => {
     setPresencePopupDismissedByPhase({});
   }, [reservation?.id]);
+
+  const handleVerificationDispute = () => {
+    if (!isVerificationDisputeScenario) return;
+
+    setVerificationDisputeStatus('Litige de vérification ouvert. Caution maintenue en attente de décision.');
+    setInspectionDisputes([
+      {
+        id: 'verification-dispute',
+        status: 'opened',
+        opened_by_user_id: user?.id || 'verification-owner',
+        selected_photos: ['verification-after-photo']
+      }
+    ]);
+    setInspectionSettlement({
+      status: 'disputed_pending_moderation',
+      payment_hold_status: 'held'
+    });
+  };
 
   const currentUserRole = useMemo(() => {
     if (!user?.id || !reservation) return null;
@@ -234,10 +309,10 @@ const PhotosEtatDesLieux = () => {
   const isEndInspectionDay = isSameLocalDay(endDateOnly, new Date());
   const canInteractStartPhase = Boolean(currentUserRole)
     && isStartInspectionDay
-    && !['completed', 'cancelled']?.includes(reservationStatus);
+    && PICKUP_READY_RESERVATION_STATUSES?.has(reservationStatus);
   const canInteractEndPhase = Boolean(currentUserRole)
     && isEndInspectionDay
-    && ['accepted', 'paid', 'active', 'ongoing', 'completed']?.includes(reservationStatus);
+    && PICKUP_READY_RESERVATION_STATUSES?.has(reservationStatus);
 
   const isPhaseClosed = (session) => Boolean(session?.closed_at) || String(session?.status || '')?.toLowerCase() === 'closed';
   const isPresenceReady = (session) => Boolean(session?.owner_presence_confirmed_at && session?.renter_presence_confirmed_at);
@@ -309,14 +384,14 @@ const PhotosEtatDesLieux = () => {
     : formatDateDayLabel(endDateOnly);
 
   const beforeCameraLockedReason = beforePhaseClosed
-    ? 'La phase de debut est cloturee et les preuves sont figées.'
+    ? 'La phase de début est clôturée et les preuves sont figées.'
     : !isStartInspectionDay
       ? `La phase de début est disponible uniquement le jour de remise (${formatDateDayLabel(startDateOnly)}).`
       : !beforePresenceReady
         ? "La caméra reste bloquée tant que propriétaire et locataire n'ont pas confirmé leur présence."
         : null;
   const afterCameraLockedReason = afterPhaseClosed
-    ? 'La phase de fin est cloturee et les preuves sont figées.'
+    ? 'La phase de fin est clôturée et les preuves sont figées.'
     : !isEndInspectionDay
       ? `La phase de fin est disponible uniquement le jour de restitution (${formatDateDayLabel(endDateOnly)}).`
       : !afterPresenceReady
@@ -329,7 +404,7 @@ const PhotosEtatDesLieux = () => {
   const cautionDecisionLockReason = manualCautionLockedByOfficialFlow
     ? (
       !afterPhaseClosed
-        ? "La caution ne peut pas etre decidee ici avant la clôture de l'etat des lieux de fin."
+        ? "La caution ne peut pas être decidee ici avant la clôture de l'état des lieux de fin."
         : "Le règlement final suit le workflow officiel (fenêtre de contestation 24h puis arbitrage/modération si litige)."
     )
     : null;
@@ -352,7 +427,7 @@ const PhotosEtatDesLieux = () => {
 
     if (phase === photoService?.PHASES?.START && !canUploadBefore) {
       if (beforePhaseClosed) {
-        toast?.error('La phase de debut est cloturee. Les photos sont figées.');
+        toast?.error('La phase de début est clôturée. Les photos sont figées.');
       } else if (!beforePresenceReady) {
         toast?.error("La caméra est bloquée tant que les 2 parties n'ont pas confirmé leur présence (début).");
       } else {
@@ -362,7 +437,7 @@ const PhotosEtatDesLieux = () => {
     }
     if (phase === photoService?.PHASES?.END && !canUploadAfter) {
       if (afterPhaseClosed) {
-        toast?.error('La phase de fin est cloturee. Les photos sont figées.');
+        toast?.error('La phase de fin est clôturée. Les photos sont figées.');
       } else if (!afterPresenceReady) {
         toast?.error("La caméra est bloquée tant que les 2 parties n'ont pas confirmé leur présence (fin).");
       } else {
@@ -464,7 +539,7 @@ const PhotosEtatDesLieux = () => {
 
     const normalizedPhase = normalizePhase(phase);
     if (normalizedPhase === startPhaseKey && !isStartInspectionDay) {
-      toast?.error(`Validation debut autorisée uniquement le ${formatDateDayLabel(startDateOnly)}.`);
+      toast?.error(`Validation début autorisée uniquement le ${formatDateDayLabel(startDateOnly)}.`);
       return;
     }
     if (normalizedPhase === endPhaseKey && !isEndInspectionDay) {
@@ -490,7 +565,7 @@ const PhotosEtatDesLieux = () => {
       toast?.success(`Présence ${phaseLabel} confirmée.`);
       await loadPageData();
     } catch (confirmErr) {
-      console.error('Erreur confirmation presence inspection:', confirmErr);
+      console.error('Erreur confirmation présence inspection:', confirmErr);
       toast?.error(confirmErr?.message || 'Impossible de confirmer votre présence.');
     } finally {
       setPresenceConfirmingPhase(null);
@@ -525,7 +600,7 @@ const PhotosEtatDesLieux = () => {
 
     const normalizedPhase = normalizePhase(phase);
     if (normalizedPhase === startPhaseKey && !isStartInspectionDay) {
-      toast?.error(`Finalisation debut autorisée uniquement le ${formatDateDayLabel(startDateOnly)}.`);
+      toast?.error(`Finalisation début autorisée uniquement le ${formatDateDayLabel(startDateOnly)}.`);
       return;
     }
     if (normalizedPhase === endPhaseKey && !isEndInspectionDay) {
@@ -605,7 +680,7 @@ const PhotosEtatDesLieux = () => {
   const handleDepositDecision = async (targetStatus, confirmationMessage) => {
     if (!reservation?.id) return;
     if (!canManageCaution) {
-      toast?.error(cautionDecisionLockReason || "Seul le propriétaire peut gerer la caution.");
+      toast?.error(cautionDecisionLockReason || "Seul le propriétaire peut gérer la caution.");
       return;
     }
 
@@ -625,8 +700,8 @@ const PhotosEtatDesLieux = () => {
       setReservation((prev) => ({ ...(prev || {}), ...(data || {}), deposit_status: data?.deposit_status || targetStatus }));
       toast?.success(targetStatus === 'released' ? 'Caution libérée.' : 'Caution marquée comme retenue.');
     } catch (decisionError) {
-      console.error('Erreur mise ? jour caution:', decisionError);
-      toast?.error(decisionError?.message || 'Impossible de mettre ? jour la caution.');
+      console.error('Erreur mise à jour caution:', decisionError);
+      toast?.error(decisionError?.message || 'Impossible de mettre à jour la caution.');
     } finally {
       setCautionActionLoading(false);
     }
@@ -669,10 +744,32 @@ const PhotosEtatDesLieux = () => {
           <div className="bg-white rounded-lg shadow-elevation-1 p-6 mb-6">
             <div className="flex items-center gap-3 text-muted-foreground">
               <Icon name="Loader2" size={20} className="animate-spin" />
-              <span>Chargement de la reservation et des photos...</span>
+              <span>Chargement de la réservation et des photos...</span>
             </div>
           </div>
         )}
+
+        {!loading && !error && reservation && isVerificationDisputeScenario ? (
+          <div className="mb-6 rounded-lg border border-green-200 bg-green-50 p-4">
+            <div className="flex items-start gap-3">
+              <Icon name="ShieldCheck" size={20} className="mt-0.5 text-success" />
+              <div className="space-y-2">
+                <p className="font-medium text-foreground">Mode de vérification admin</p>
+                <p className="text-sm text-muted-foreground">
+                  Ouvrez un litige déterministe pour vérifier la sélection de photos et le maintien de la caution.
+                </p>
+                <Button type="button" size="sm" onClick={handleVerificationDispute}>
+                  Ouvrir un litige de vérification
+                </Button>
+                {verificationDisputeStatus ? (
+                  <p className="text-sm font-medium text-success" data-testid="verification-dispute-status">
+                    {verificationDisputeStatus}
+                  </p>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         {!loading && error && (
           <div className="bg-white rounded-lg shadow-elevation-1 p-6 mb-6">
@@ -681,7 +778,7 @@ const PhotosEtatDesLieux = () => {
               <div>
                 <p className="font-medium">{error}</p>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Cette page n'affiche plus de reservation fictive.
+                  Cette page n'affiche plus de réservation fictive.
                 </p>
               </div>
             </div>
@@ -692,12 +789,12 @@ const PhotosEtatDesLieux = () => {
           <>
             {showPresencePopup && (
               <div
-                className="fixed inset-0 z-[2200] bg-black/60 px-4 py-6 md:py-10"
+                className="modal-viewport z-[2200] bg-black/60 px-4 py-6 md:py-10"
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="presence-popup-title"
               >
-                <div className="mx-auto w-full max-w-2xl rounded-2xl border border-amber-200 bg-white shadow-elevation-4 overflow-hidden">
+                <div className="modal-card modal-card-auto mx-auto max-w-2xl overflow-hidden rounded-2xl border border-amber-200 bg-white shadow-elevation-4">
                   <div className="bg-amber-50 border-b border-amber-200 px-5 py-4">
                     <div className="flex items-start gap-3">
                       <div className="h-11 w-11 rounded-full bg-amber-100 text-amber-800 inline-flex items-center justify-center flex-shrink-0">
@@ -719,7 +816,7 @@ const PhotosEtatDesLieux = () => {
                       Vous devez cliquer sur le bouton <span className="font-bold text-[#17a2b8]">"Confirmer ma présence"</span> pour continuer.
                     </p>
                     <p className="mt-3 text-sm text-muted-foreground">
-                      Tant que la presence n'est pas confirmée par les 2 parties, la caméra reste bloquée.
+                      Tant que la présence n'est pas confirmée par les 2 parties, la caméra reste bloquée.
                     </p>
 
                     <div className="mt-5 rounded-lg border border-border bg-surface px-4 py-3 text-sm text-foreground">
@@ -814,7 +911,7 @@ const PhotosEtatDesLieux = () => {
                 <div className="flex gap-2">
                   <Icon name="ShieldCheck" size={18} className="text-amber-700 flex-shrink-0 mt-0.5" />
                   <div className="text-sm">
-                    <p className="font-medium text-amber-900 mb-1">Mode renforce etat des lieux</p>
+                    <p className="font-medium text-amber-900 mb-1">Mode renforce état des lieux</p>
                     <p className="text-amber-800">
                       La caméra est activée uniquement après confirmation de présence par le propriétaire et le locataire.
                       Chaque partie doit ensuite finaliser explicitement ses photos pour permettre la clôture de la phase.
@@ -901,9 +998,9 @@ const PhotosEtatDesLieux = () => {
                 <div>
                   <p className="text-sm font-medium text-foreground mb-2">Photos d'état des lieux (réelles)</p>
                   <ul className="text-sm text-muted-foreground space-y-1">
-                    <li>- Les photos affichees proviennent de la reservation selectionnee.</li>
-                    <li>- Aucune photo de demonstration n'est prechargee.</li>
-                    <li>- Les commentaires/GPS ne s'affichent que s'ils existent reellement dans les donnees.</li>
+                    <li>- Les photos affichées proviennent de la réservation sélectionnée.</li>
+                    <li>- Aucune photo de démonstration n'est préchargée.</li>
+                    <li>- Les commentaires et indications de lieu s'affichent seulement s'ils ont été ajoutés pendant l'état des lieux.</li>
                     <li>- Pour l'arbitrage interne de la plateforme, seules les photos prises via ce module officiel sont prises en compte.</li>
                     <li>- Cette règle d'arbitrage interne n'exclut pas les droits légaux des parties en dehors de la plateforme.</li>
                   </ul>

@@ -1,8 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import Header from '../../components/navigation/Header';
-import Footer from '../../components/Footer';
 import Icon from '../../components/AppIcon';
 import faqService from '../../services/faqService';
+import { ActionCard, ActionEmptyState, ActionHero, ActionPageShell } from '../../components/page/ActionPageLayout';
 
 const normalizeText = (value = '') =>
   String(value || '')
@@ -51,107 +50,119 @@ const FAQPage = () => {
   }, [faqs, normalizedSearch]);
 
   return (
-    <div className="min-h-screen flex flex-col bg-surface">
-      <Header />
-
-      <main className="flex-1 pt-20 pb-12">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
-          <section className="bg-gradient-to-r from-[#17a2b8] to-[#138496] rounded-lg p-8 md:p-12 text-white mb-8">
-            <h1 className="text-3xl md:text-4xl font-bold mb-3">Foire aux questions</h1>
-            <p className="text-white/90">Retrouvez les reponses aux questions les plus frequentes.</p>
-          </section>
-
-          <section className="mb-6 rounded-lg bg-white p-4 md:p-5 shadow-elevation-1">
-            <label htmlFor="faq-search" className="block text-sm font-medium text-foreground mb-2">
-              Rechercher dans la FAQ
-            </label>
-            <div className="relative">
-              <Icon
-                name="Search"
-                size={18}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none"
-              />
-              <input
-                id="faq-search"
-                type="text"
-                value={searchQuery}
-                onChange={(event) => {
-                  setSearchQuery(event?.target?.value || '');
+    <ActionPageShell
+      maxWidth="max-w-5xl"
+      hero={(
+        <ActionHero
+          eyebrow="FAQ"
+          title="Questions frequentes"
+          subtitle="Cherchez puis ouvrez la bonne reponse."
+          tone="mint"
+        />
+      )}
+    >
+      <ActionCard className="space-y-5">
+        <div className="rounded-[24px] border border-slate-200 bg-slate-50/90 p-4">
+          <label htmlFor="faq-search" className="mb-2 block text-sm font-medium text-foreground">
+            Rechercher dans la FAQ
+          </label>
+          <div className="relative">
+            <Icon
+              name="Search"
+              size={18}
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+            />
+            <input
+              id="faq-search"
+              type="text"
+              value={searchQuery}
+              onChange={(event) => {
+                setSearchQuery(event?.target?.value || '');
+                setOpenFaqKey(null);
+              }}
+              placeholder="Ex: réservation, caution, annulation..."
+              className="h-11 w-full rounded-2xl border border-input bg-white pl-10 pr-10 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            />
+            {searchQuery?.trim() ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchQuery('');
                   setOpenFaqKey(null);
                 }}
-                placeholder="Ex: reservation, caution, annulation..."
-                className="h-10 w-full rounded-md border border-input bg-background pl-10 pr-10 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-              />
-              {searchQuery?.trim() && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSearchQuery('');
-                    setOpenFaqKey(null);
-                  }}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground hover:text-foreground"
-                  aria-label="Effacer la recherche"
-                >
-                  <Icon name="X" size={16} />
-                </button>
-              )}
-            </div>
-            {!loading && (
-              <p className="mt-2 text-sm text-muted-foreground">
-                {filteredFaqs?.length} resultat{filteredFaqs?.length > 1 ? 's' : ''} trouve{filteredFaqs?.length > 1 ? 's' : ''}
-              </p>
-            )}
-          </section>
-
-          {error && (
-            <div className="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-              {error}
-            </div>
-          )}
-
-          <section className="bg-white rounded-lg shadow-elevation-2 divide-y divide-border">
-            {loading ? (
-              <div className="p-6 text-muted-foreground">Chargement...</div>
-            ) : filteredFaqs?.length === 0 ? (
-              <div className="p-6 text-muted-foreground">
-                {searchQuery?.trim()
-                  ? 'Aucune question ne correspond a votre recherche.'
-                  : 'Aucune question disponible pour le moment.'}
-              </div>
-            ) : (
-              filteredFaqs?.map((faq, index) => {
-                const faqKey = faq?.id ? String(faq?.id) : `faq-${index}`;
-
-                return (
-                  <div key={faqKey} className="p-6">
-                    <button
-                      type="button"
-                      onClick={() => setOpenFaqKey(openFaqKey === faqKey ? null : faqKey)}
-                      className="w-full flex items-center justify-between text-left"
-                    >
-                      <h2 className="text-base md:text-lg font-semibold text-foreground pr-4">
-                        {faq?.question || 'Question'}
-                      </h2>
-                      <Icon
-                        name={openFaqKey === faqKey ? 'ChevronUp' : 'ChevronDown'}
-                        size={20}
-                        className="text-muted-foreground flex-shrink-0"
-                      />
-                    </button>
-
-                    {openFaqKey === faqKey && (
-                      <p className="mt-4 text-muted-foreground whitespace-pre-wrap">{faq?.answer || '-'}</p>
-                    )}
-                  </div>
-                );
-              })
-            )}
-          </section>
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground hover:text-foreground"
+                aria-label="Effacer la recherche"
+              >
+                <Icon name="X" size={16} />
+              </button>
+            ) : null}
+          </div>
+          {!loading ? (
+            <p className="mt-2 text-sm text-muted-foreground">
+              {filteredFaqs?.length} résultat{filteredFaqs?.length > 1 ? 's' : ''} trouvé{filteredFaqs?.length > 1 ? 's' : ''}
+            </p>
+          ) : null}
         </div>
-      </main>
 
-      <Footer />
-    </div>
+        {error ? (
+          <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {error}
+          </div>
+        ) : null}
+
+        {loading ? (
+          <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">
+            <Icon name="Loader2" size={18} className="animate-spin" />
+            Chargement des questions...
+          </div>
+        ) : filteredFaqs?.length === 0 ? (
+          <ActionEmptyState
+            icon="SearchX"
+            title={searchQuery?.trim() ? 'Aucune réponse trouvée' : 'Aucune question disponible'}
+            description={
+              searchQuery?.trim()
+                ? 'Essayez un mot-clé plus simple ou retirez le filtre.'
+                : 'La FAQ publique sera visible ici dès que du contenu sera publié.'
+            }
+          />
+        ) : (
+          <div className="space-y-3">
+            {filteredFaqs?.map((faq, index) => {
+              const faqKey = faq?.id ? String(faq?.id) : `faq-${index}`;
+              const isOpen = openFaqKey === faqKey;
+
+              return (
+                <div key={faqKey} className="overflow-hidden rounded-[24px] border border-slate-200 bg-white">
+                  <button
+                    type="button"
+                    onClick={() => setOpenFaqKey(isOpen ? null : faqKey)}
+                    className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left"
+                  >
+                    <div>
+                      <p className="text-sm font-semibold text-slate-950 md:text-base">
+                        {faq?.question || 'Question'}
+                      </p>
+                      <p className="mt-1 text-xs font-medium uppercase tracking-[0.14em] text-slate-500">
+                        {isOpen ? 'Réponse affichée' : 'Cliquer pour voir la réponse'}
+                      </p>
+                    </div>
+                    <span className={`flex h-10 w-10 items-center justify-center rounded-2xl ${isOpen ? 'bg-sky-50 text-sky-700' : 'bg-slate-100 text-slate-500'}`}>
+                      <Icon name={isOpen ? 'ChevronUp' : 'ChevronDown'} size={18} />
+                    </span>
+                  </button>
+
+                  {isOpen ? (
+                    <div className="border-t border-slate-200 bg-slate-50/70 px-5 py-4">
+                      <p className="whitespace-pre-wrap text-sm text-slate-700 md:text-base">{faq?.answer || '-'}</p>
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </ActionCard>
+    </ActionPageShell>
   );
 };
 

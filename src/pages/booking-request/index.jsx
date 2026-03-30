@@ -3,14 +3,17 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { differenceInDays, startOfDay } from 'date-fns';
 import toast from 'react-hot-toast';
 
-import Header from '../../components/navigation/Header';
-import Footer from '../../components/Footer';
 import Button from '../../components/ui/Button';
 import { Checkbox } from '../../components/ui/Checkbox';
 import Icon from '../../components/AppIcon';
 import DateRangePicker from './components/DateRangePicker';
 import PricingBreakdown from './components/PricingBreakdown';
 import BookingSummary from './components/BookingSummary';
+import {
+  ActionCard,
+  ActionHero,
+  ActionPageShell
+} from '../../components/page/ActionPageLayout';
 import { useAuth } from '../../contexts/AuthContext';
 import annonceService from '../../services/annonceService';
 import reservationService from '../../services/reservationService';
@@ -33,8 +36,9 @@ import {
   normalizeScheduleWeekdays,
   rangeContainsBlockedDate
 } from '../../utils/availabilityRules';
+import { AVAILABILITY_HOLD_RESERVATION_STATUSES } from '../../utils/reservationStatus';
 
-const BLOCKING_STATUSES = new Set(['accepted', 'paid', 'active', 'ongoing']);
+const BLOCKING_STATUSES = AVAILABILITY_HOLD_RESERVATION_STATUSES;
 
 const expandReservationDates = (startDateValue, endDateValue) => {
   const startDate = new Date(startDateValue);
@@ -426,45 +430,49 @@ const BookingRequest = () => {
       });
     } catch (submitError) {
       console.error('Erreur preparation paiement:', submitError);
-      toast?.error(submitError?.message || 'Impossible de preparer le paiement.');
+      toast?.error(submitError?.message || 'Impossible de préparer le paiement.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-surface">
-      <Header />
-
-      <main className="flex-1 py-8 md:py-12">
-        <div className="container mx-auto px-4 max-w-6xl">
-          <div className="mb-6 md:mb-8">
-            <button
-              onClick={() => navigate(-1)}
-              className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors mb-4"
-            >
-              <Icon name="ArrowLeft" size={20} />
-              <span>Retour</span>
-            </button>
-            <h1 className="text-h2 md:text-h1 font-heading text-foreground">
-              Reservation instantanee
-            </h1>
-            <p className="text-muted-foreground mt-2">
-              Choisissez vos dates et passez au paiement pour confirmer la reservation
-            </p>
-          </div>
+    <ActionPageShell
+      maxWidth="max-w-6xl"
+      hero={(
+        <ActionHero
+          eyebrow="Reservation"
+          title="Choisissez vos dates"
+          subtitle="Le prix total se met a jour avant le paiement."
+          pills={[
+            { label: 'Dates', icon: 'CalendarRange' },
+            { label: 'Recapitulatif', icon: 'ReceiptText' },
+            { label: 'Paiement', icon: 'CreditCard' }
+          ]}
+          tone="warm"
+        />
+      )}
+    >
+      <div className="space-y-6">
+        <button
+          onClick={() => navigate(-1)}
+          className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/90 px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-950"
+        >
+          <Icon name="ArrowLeft" size={18} />
+          <span>Retour</span>
+        </button>
 
           {equipmentLoading && (
-            <div className="bg-white rounded-lg shadow-elevation-2 p-6 mb-6">
+            <ActionCard className="p-6">
               <div className="flex items-center gap-3 text-muted-foreground">
                 <Icon name="Loader2" size={20} className="animate-spin" />
                 <span>Chargement des informations de l'annonce...</span>
               </div>
-            </div>
+            </ActionCard>
           )}
 
           {!equipmentLoading && equipmentError && (
-            <div className="bg-white rounded-lg shadow-elevation-2 p-6 mb-6">
+            <ActionCard className="p-6">
               <div className="flex items-start gap-3 text-destructive">
                 <Icon name="AlertCircle" size={20} className="mt-0.5" />
                 <div>
@@ -474,7 +482,7 @@ const BookingRequest = () => {
                   </p>
                 </div>
               </div>
-            </div>
+            </ActionCard>
           )}
 
           {!equipmentLoading && equipment && (
@@ -626,11 +634,8 @@ const BookingRequest = () => {
               </div>
             </form>
           )}
-        </div>
-      </main>
-
-      <Footer />
-    </div>
+      </div>
+    </ActionPageShell>
   );
 };
 

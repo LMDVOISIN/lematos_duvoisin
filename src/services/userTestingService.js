@@ -8,6 +8,31 @@ const normalizeMirrorScenarioFields = (scenarioData = {}) => ({
 
 const userTestingService = {
   // ============ USER TESTERS ============
+
+  async processMirrorAvailabilityNotifications(appUrl = null) {
+    try {
+      const { data: sessionData } = await supabase?.auth?.getSession?.();
+      const accessToken = sessionData?.session?.access_token;
+      if (!accessToken) {
+        return { data: null, error: null };
+      }
+      const { data, error } = await supabase?.functions?.invoke('notify-test-mirror-ready', {
+        body: {
+          appUrl: appUrl || (typeof window !== 'undefined' ? window.location?.origin : null)
+        }
+      });
+
+      if (error) {
+        if (error?.status === 401) {
+          return { data: null, error: null };
+        }
+        throw error;
+      }
+      return { data, error: null };
+    } catch (error) {
+      return { data: null, error };
+    }
+  },
   
   async checkIfTester(email) {
     try {
@@ -32,6 +57,7 @@ const userTestingService = {
         })?.select()?.single();
 
       if (error) throw error;
+      await userTestingService?.processMirrorAvailabilityNotifications();
       return { data, error: null };
     } catch (error) {
       return { data: null, error };
@@ -69,9 +95,23 @@ const userTestingService = {
       const { data, error } = await supabase?.from('user_testers')?.update({ is_active: isActive })?.eq('id', testerId)?.select()?.single();
 
       if (error) throw error;
+      if (isActive) {
+        await userTestingService?.processMirrorAvailabilityNotifications();
+      }
       return { data, error: null };
     } catch (error) {
       return { data: null, error };
+    }
+  },
+
+  async deleteTester(testerId) {
+    try {
+      const { error } = await supabase?.from('user_testers')?.delete()?.eq('id', testerId);
+
+      if (error) throw error;
+      return { error: null };
+    } catch (error) {
+      return { error };
     }
   },
 
@@ -136,6 +176,7 @@ const userTestingService = {
         })?.select()?.single();
 
       if (error) throw error;
+      await userTestingService?.processMirrorAvailabilityNotifications();
       return { data, error: null };
     } catch (error) {
       return { data: null, error };
@@ -152,6 +193,57 @@ const userTestingService = {
           pages: scenarioData?.pages,
           is_active: scenarioData?.isActive,
           ...normalizeMirrorScenarioFields(scenarioData),
+          updated_at: new Date()?.toISOString()
+        })?.eq('id', scenarioId)?.select()?.single();
+
+      if (error) throw error;
+      await userTestingService?.processMirrorAvailabilityNotifications();
+      return { data, error: null };
+    } catch (error) {
+      return { data: null, error };
+    }
+  },
+
+  async saveScenarioMirrorAssignments(assignments = []) {
+    try {
+      const normalizedAssignments = (Array.isArray(assignments) ? assignments : [])
+        .filter((assignment) => assignment?.scenarioId)
+        .map((assignment) => ({
+          scenarioId: assignment.scenarioId,
+          programFamily: assignment?.programFamily || null,
+          mirrorGroupKey: assignment?.mirrorGroupKey?.trim() || null,
+          mirrorRole: assignment?.mirrorRole || null
+        }));
+
+      if (!normalizedAssignments.length) {
+        return { data: [], error: null };
+      }
+
+      const updatedRows = [];
+
+      for (const assignment of normalizedAssignments) {
+        const { data, error } = await supabase?.from('test_scenarios')?.update({
+            program_family: assignment.programFamily,
+            mirror_group_key: assignment.mirrorGroupKey,
+            mirror_role: assignment.mirrorRole,
+            updated_at: new Date()?.toISOString()
+          })?.eq('id', assignment.scenarioId)?.select()?.single();
+
+        if (error) throw error;
+        updatedRows.push(data);
+      }
+
+      await userTestingService?.processMirrorAvailabilityNotifications();
+      return { data: updatedRows, error: null };
+    } catch (error) {
+      return { data: null, error };
+    }
+  },
+
+  async updateScenarioTransactionExpectation(scenarioId, transactionExpectation = null) {
+    try {
+      const { data, error } = await supabase?.from('test_scenarios')?.update({
+          transaction_expectation: transactionExpectation || null,
           updated_at: new Date()?.toISOString()
         })?.eq('id', scenarioId)?.select()?.single();
 
@@ -179,11 +271,51 @@ const userTestingService = {
     return userTestingService?.startMirrorSession(testerId, scenarioId);
   },
 
-  async startMirrorSession(testerId, selectedReferenceScenarioId = null) {
+  async startMirrorSession(
+    testerId,
+    selectedReferenceScenarioId = null,
+    selectedFamily = null,
+    options = {}
+  ) {
     try {
       const { data, error } = await supabase?.rpc('start_test_mirror_session', {
         p_tester_id: testerId,
-        p_selected_reference_scenario_id: selectedReferenceScenarioId || null
+        p_selected_reference_scenario_id: selectedReferenceScenarioId || null,
+        p_selected_family: selectedFamily || null,
+        p_allow_missing_reference_context: Boolean(options?.allowMissingReferenceContext)
+      });
+
+      if (error) throw error;
+      return { data, error: null };
+    } catch (error) {
+      return { data: null, error };
+    }
+  },
+
+  async getSessionRuntimeState(sessionId) {
+    try {
+      if (!sessionId) return { data: null, error: null };
+
+      const { data, error } = await supabase?.rpc('get_test_session_runtime_state', {
+        p_session_id: sessionId
+      });
+
+      if (error) throw error;
+      return { data, error: null };
+    } catch (error) {
+      return { data: null, error };
+    }
+  },
+
+  async updateReferenceMirrorContext(sessionId, contextData) {
+    try {
+      if (!sessionId || !contextData || typeof contextData !== 'object') {
+        return { data: null, error: null };
+      }
+
+      const { data, error } = await supabase?.rpc('update_test_mirror_reference_context', {
+        p_reference_session_id: sessionId,
+        p_context: contextData
       });
 
       if (error) throw error;
@@ -202,6 +334,133 @@ const userTestingService = {
         `)?.eq('tester_id', testerId)?.eq('status', 'in_progress')?.order('started_at', { ascending: false })?.limit(1)?.maybeSingle();
 
       if (error && error?.code !== 'PGRST116') throw error;
+      if (!data) return { data: null, error: null };
+
+      const { data: runtimeState } = await userTestingService?.getSessionRuntimeState(data?.id);
+
+      return {
+        data: {
+          ...data,
+          runtimeState: runtimeState || null
+        },
+        error: null
+      };
+    } catch (error) {
+      return { data: null, error };
+    }
+  },
+
+  async getSessionById(sessionId) {
+    try {
+      if (!sessionId) return { data: null, error: null };
+
+      const { data, error } = await supabase?.from('test_sessions')?.select(`
+          *,
+          scenario:test_scenarios(*),
+          tester:user_testers(*)
+        `)?.eq('id', sessionId)?.maybeSingle();
+
+      if (error && error?.code !== 'PGRST116') throw error;
+      if (!data) return { data: null, error: null };
+
+      const { data: runtimeState } = await userTestingService?.getSessionRuntimeState(data?.id);
+
+      return {
+        data: {
+          ...data,
+          runtimeState: runtimeState || null
+        },
+        error: null
+      };
+    } catch (error) {
+      return { data: null, error };
+    }
+  },
+
+  async getPausedSessions(testerId) {
+    try {
+      if (!testerId) return { data: [], error: null };
+
+      const { data, error } = await supabase?.from('test_sessions')?.select(`
+          *,
+          scenario:test_scenarios(*),
+          tester:user_testers(*)
+        `)?.eq('tester_id', testerId)?.eq('status', 'paused')?.order('paused_at', { ascending: false });
+
+      if (error) throw error;
+
+      const hydratedSessions = await Promise.all(
+        (data || []).map(async (session) => {
+          const { data: runtimeState } = await userTestingService?.getSessionRuntimeState(session?.id);
+          return {
+            ...session,
+            runtimeState: runtimeState || null
+          };
+        })
+      );
+
+      return { data: hydratedSessions, error: null };
+    } catch (error) {
+      return { data: [], error };
+    }
+  },
+
+  async updateSessionCheckpoint(sessionId, pageUrl) {
+    try {
+      if (!sessionId) return { data: null, error: null };
+
+      const { data, error } = await supabase?.rpc('update_test_session_checkpoint', {
+        p_session_id: sessionId,
+        p_page_url: pageUrl || null
+      });
+
+      if (error) throw error;
+      return { data, error: null };
+    } catch (error) {
+      return { data: null, error };
+    }
+  },
+
+  async pauseSessionAsAdmin(sessionId, reason = '') {
+    try {
+      if (!sessionId) return { data: null, error: null };
+
+      const { data, error } = await supabase?.rpc('pause_test_session_as_admin', {
+        p_session_id: sessionId,
+        p_reason: reason || null
+      });
+
+      if (error) throw error;
+      return { data, error: null };
+    } catch (error) {
+      return { data: null, error };
+    }
+  },
+
+  async markPausedSessionReadyForResume(sessionId) {
+    try {
+      if (!sessionId) return { data: null, error: null };
+
+      const { data, error } = await supabase?.rpc('mark_paused_test_session_ready_for_resume', {
+        p_session_id: sessionId
+      });
+
+      if (error) throw error;
+      return { data, error: null };
+    } catch (error) {
+      return { data: null, error };
+    }
+  },
+
+  async resumePausedSession(sessionId) {
+    try {
+      if (!sessionId) return { data: null, error: null };
+
+      const { data, error } = await supabase?.rpc('resume_paused_test_session', {
+        p_session_id: sessionId
+      });
+
+      if (error) throw error;
       return { data, error: null };
     } catch (error) {
       return { data: null, error };
@@ -213,7 +472,8 @@ const userTestingService = {
       // Update session status
       const { error: sessionError } = await supabase?.from('test_sessions')?.update({
           status: 'completed',
-          completed_at: new Date()?.toISOString()
+          completed_at: new Date()?.toISOString(),
+          updated_at: new Date()?.toISOString()
         })?.eq('id', sessionId);
 
       if (sessionError) throw sessionError;
@@ -228,6 +488,7 @@ const userTestingService = {
         })?.select()?.single();
 
       if (debriefError) throw debriefError;
+      await userTestingService?.processMirrorAvailabilityNotifications();
       return { data, error: null };
     } catch (error) {
       return { data: null, error };
@@ -289,6 +550,7 @@ const userTestingService = {
       });
 
       if (error) throw error;
+      await userTestingService?.processMirrorAvailabilityNotifications();
       return { data, error: null };
     } catch (error) {
       return { data: null, error };
@@ -328,14 +590,93 @@ const userTestingService = {
     }
   },
 
+  async getExpectationForSession(sessionId) {
+    try {
+      if (!sessionId) return { data: null, error: null };
+      const { data, error } = await supabase
+        ?.from('test_expectations')
+        ?.select('*')
+        ?.eq('session_id', sessionId)
+        ?.maybeSingle();
+
+      if (error && error?.code !== 'PGRST116') throw error;
+      return { data: data || null, error: null };
+    } catch (error) {
+      return { data: null, error };
+    }
+  },
+
+  async saveExpectationForSession(expectationData) {
+    try {
+      const payload = {
+        session_id: expectationData?.sessionId,
+        tester_id: expectationData?.testerId,
+        scenario_id: expectationData?.scenarioId,
+        expectation_text: expectationData?.expectationText,
+        updated_at: new Date()?.toISOString()
+      };
+
+      const { data, error } = await supabase
+        ?.from('test_expectations')
+        ?.upsert(payload, { onConflict: 'session_id' })
+        ?.select()
+        ?.single();
+
+      if (error) throw error;
+      return { data, error: null };
+    } catch (error) {
+      return { data: null, error };
+    }
+  },
+
+  async updateExpectationOutcome(sessionId, outcomeMatch, mismatchReason = '') {
+    try {
+      if (!sessionId) return { data: null, error: null };
+      const payload = {
+        outcome_match: outcomeMatch,
+        outcome_mismatch_reason: mismatchReason || null,
+        reviewed_at: new Date()?.toISOString(),
+        updated_at: new Date()?.toISOString()
+      };
+
+      const { data, error } = await supabase
+        ?.from('test_expectations')
+        ?.update(payload)
+        ?.eq('session_id', sessionId)
+        ?.select()
+        ?.single();
+
+      if (error) throw error;
+      return { data, error: null };
+    } catch (error) {
+      return { data: null, error };
+    }
+  },
+
   async updatePageResponse(responseId, responseData) {
     try {
-      const { data, error } = await supabase?.from('page_responses')?.update({
-          exit_questionnaire: responseData?.exitQuestionnaire,
-          perceived_info: responseData?.perceivedInfo,
-          next_action_understood: responseData?.nextActionUnderstood,
-          time_spent_seconds: responseData?.timeSpentSeconds
-        })?.eq('id', responseId)?.select()?.single();
+      const payload = {};
+
+      if (Object.prototype.hasOwnProperty.call(responseData || {}, 'coherenceQuestion')) {
+        payload.coherence_question = responseData?.coherenceQuestion;
+      }
+      if (Object.prototype.hasOwnProperty.call(responseData || {}, 'coherenceAnswer')) {
+        payload.coherence_answer = responseData?.coherenceAnswer;
+      }
+      if (Object.prototype.hasOwnProperty.call(responseData || {}, 'exitQuestionnaire')) {
+        payload.exit_questionnaire = responseData?.exitQuestionnaire;
+      }
+      if (Object.prototype.hasOwnProperty.call(responseData || {}, 'perceivedInfo')) {
+        payload.perceived_info = responseData?.perceivedInfo;
+      }
+      if (Object.prototype.hasOwnProperty.call(responseData || {}, 'nextActionUnderstood')) {
+        payload.next_action_understood = responseData?.nextActionUnderstood;
+      }
+      if (Object.prototype.hasOwnProperty.call(responseData || {}, 'timeSpentSeconds')) {
+        payload.time_spent_seconds = responseData?.timeSpentSeconds;
+      }
+
+      const { data, error } = await supabase?.from('page_responses')?.update(payload)?.eq('id', responseId)?.select()?.single();
 
       if (error) throw error;
       return { data, error: null };
@@ -509,7 +850,8 @@ const userTestingService = {
           request_id: request?.id,
           sender_role: 'participant',
           sender_user_id: senderUserId,
-          content: requestData?.content
+          content: requestData?.content,
+          screenshot_urls: requestData?.screenshotUrls || []
         })?.select()?.single();
 
       if (messageError) throw messageError;
@@ -520,7 +862,7 @@ const userTestingService = {
     }
   },
 
-  async sendEmergencyMessage(requestId, content, senderRole = 'participant') {
+  async sendEmergencyMessage(requestId, content, senderRole = 'participant', screenshotUrls = []) {
     try {
       const { data: authData } = await supabase?.auth?.getUser();
       const senderUserId = authData?.user?.id || null;
@@ -529,7 +871,8 @@ const userTestingService = {
           request_id: requestId,
           sender_role: senderRole,
           sender_user_id: senderUserId,
-          content
+          content,
+          screenshot_urls: screenshotUrls || []
         })?.select()?.single();
 
       if (error) throw error;

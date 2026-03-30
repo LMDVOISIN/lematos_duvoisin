@@ -1,6 +1,6 @@
 ﻿import { supabase } from '../lib/supabase';
+import { sendEmail } from './emailService';
 import notificationService from './notificationService';
-import reservationService from './reservationService';
 
 /**
  * Matching Service
@@ -56,6 +56,64 @@ function datesOverlap(start1, end1, start2, end2) {
   const s2 = new Date(start2);
   const e2 = new Date(end2);
   return s1 <= e2 && e1 >= s2;
+}
+
+function getAppOrigin() {
+  return (
+    (typeof window !== 'undefined' ? (window.location?.origin || '') : '')
+    || import.meta?.env?.VITE_APP_URL
+    || import.meta?.env?.VITE_SITE_URL
+    || ''
+  );
+}
+
+function buildAppUrl(path = '') {
+  const origin = String(getAppOrigin() || '')?.trim()?.replace(/\/$/, '');
+  const safePath = String(path || '');
+
+  if (!origin) return safePath;
+  if (!safePath) return origin;
+  if (safePath?.startsWith('http://') || safePath?.startsWith('https://')) return safePath;
+  return `${origin}${safePath?.startsWith('/') ? safePath : `/${safePath}`}`;
+}
+
+function formatDateForEmail(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date?.getTime?.())) return '';
+
+  return date?.toLocaleDateString('fr-FR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric'
+  });
+}
+
+function formatPricePerDay(value) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || amount <= 0) return 'Prix a confirmer';
+
+  return `${amount?.toLocaleString('fr-FR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  })} EUR/jour`;
+}
+
+function escapeHtml(value) {
+  return String(value || '')
+    ?.replace(/&/g, '&amp;')
+    ?.replace(/</g, '&lt;')
+    ?.replace(/>/g, '&gt;')
+    ?.replace(/"/g, '&quot;')
+    ?.replace(/'/g, '&#39;');
+}
+
+function buildProposalNoteHtml(note) {
+  const normalizedNote = String(note || '')?.trim();
+  if (!normalizedNote) return '';
+
+  const escapedNote = escapeHtml(normalizedNote)?.replace(/\r?\n/g, '<br />');
+  return `<div style="background-color: #f8fafc; border: 1px solid #dbeafe; border-radius: 8px; padding: 16px; margin: 16px 0;"><p style="margin: 0 0 8px 0;"><strong>Message ajoute a la proposition :</strong></p><p style="margin: 0;">${escapedNote}</p></div>`;
 }
 
 const matchingService = {
@@ -176,10 +234,10 @@ const matchingService = {
       if (!user) return { data: null, error: { message: 'User not authenticated' } };
 
       // Get demand details
-      const { data: demande } = await supabase?.from('demandes')?.select('user_id')?.eq('id', demandeId)?.single();
+      const { data: demande } = await supabase?.from('demandes')?.select('user_id, titre, dispo_de, dispo_a, ville')?.eq('id', demandeId)?.single();
 
       // Get offer details
-      const { data: offer } = await supabase?.from('annonces')?.select('owner_id')?.eq('id', offerId)?.single();
+      const { data: offer } = await supabase?.from('annonces')?.select('owner_id, titre, prix_jour, ville')?.eq('id', offerId)?.single();
 
       if (!demande || !offer) {
         return { data: null, error: { message: 'Demande ou offre introuvable' } };
@@ -194,7 +252,6 @@ const matchingService = {
           status: 'sent',
           match_score: matchScore,
           note,
-          email_sent_at: new Date()?.toISOString(),
           created_at: new Date()?.toISOString()
         })?.select()?.single();
 
@@ -214,6 +271,58 @@ const matchingService = {
           matchScore
         }
       );
+
+      const [demanderProfileResult, proposerProfileResult] = await Promise.all([
+        supabase?.from('profiles')?.select('pseudo, email')?.eq('id', demande?.user_id)?.maybeSingle(),
+        supabase?.from('profiles')?.select('pseudo')?.eq('id', offer?.owner_id)?.maybeSingle()
+      ]);
+
+      if (demanderProfileResult?.error) {
+        console.warn('Create proposal email: demander profile lookup failed:', demanderProfileResult?.error?.message || demanderProfileResult?.error);
+      }
+
+      if (proposerProfileResult?.error) {
+        console.warn('Create proposal email: proposer profile lookup failed:', proposerProfileResult?.error?.message || proposerProfileResult?.error);
+      }
+
+      const demanderProfile = demanderProfileResult?.data || null;
+      const proposerProfile = proposerProfileResult?.data || null;
+
+      if (demanderProfile?.email) {
+        const emailResult = await sendEmail({
+          to: demanderProfile?.email,
+          templateKey: 'proposal_received_requester',
+          variables: {
+            user_name: demanderProfile?.pseudo || demanderProfile?.email || 'Utilisateur',
+            renter_name: demanderProfile?.pseudo || demanderProfile?.email || 'Utilisateur',
+            proposer_name: proposerProfile?.pseudo || 'Un proprietaire',
+            demande_title: demande?.titre || 'Votre demande',
+            annonce_title: offer?.titre || 'Annonce',
+            offer_city: offer?.ville || demande?.ville || 'Non precisee',
+            price_per_day: formatPricePerDay(offer?.prix_jour),
+            start_date: formatDateForEmail(demande?.dispo_de) || 'A confirmer',
+            end_date: formatDateForEmail(demande?.dispo_a) || 'A confirmer',
+            demande_url: buildAppUrl('/mes-annonces#demandes'),
+            proposal_note_html: buildProposalNoteHtml(note)
+          }
+        });
+
+        if (emailResult?.success) {
+          const timestamp = new Date()?.toISOString();
+          const { error: markEmailSentError } = await supabase
+            ?.from('proposals')
+            ?.update({ email_sent_at: timestamp })
+            ?.eq('id', data?.id);
+
+          if (markEmailSentError) {
+            console.warn('Create proposal email: unable to persist email_sent_at:', markEmailSentError?.message || markEmailSentError);
+          } else if (data) {
+            data.email_sent_at = timestamp;
+          }
+        } else {
+          console.warn("Echec d'envoi e-mail demandeur (proposition recue):", emailResult?.error);
+        }
+      }
 
       return { data, error: null };
     } catch (error) {
@@ -247,55 +356,41 @@ const matchingService = {
   },
 
   /**
-   * Accept proposal
+   * Prepare checkout context for a proposal.
+   * Final acceptance is recorded only after confirmed payment.
    */
   acceptProposal: async (proposalId) => {
     try {
       const { data: { user } } = await supabase?.auth?.getUser();
       if (!user) return { data: null, error: { message: 'User not authenticated' } };
 
-      // Update proposal status
-      const { data: proposal, error: updateError } = await supabase?.from('proposals')?.update({
-          status: 'accepted',
-          accepted_at: new Date()?.toISOString(),
-          responded_at: new Date()?.toISOString()
-        })?.eq('id', proposalId)?.eq('demander_id', user?.id)?.select(`
+      const { data: proposal, error: proposalError } = await supabase?.from('proposals')?.select(`
           *,
           demand:demandes!proposals_demand_id_fkey(*),
           offer:annonces!proposals_offer_id_fkey(*)
-        `)?.single();
+        `)?.eq('id', proposalId)?.eq('demander_id', user?.id)?.single();
 
-      if (updateError) {
-        if (isSchemaError(updateError)) throw updateError;
-        return { data: null, error: updateError };
+      if (proposalError) {
+        if (isSchemaError(proposalError)) throw proposalError;
+        return { data: null, error: proposalError };
       }
 
-      // Create reservation automatically with centralized safeguards.
-      const { data: reservation, error: reservationError } = await reservationService?.createReservation({
-        annonce_id: proposal?.offer_id,
-        owner_id: proposal?.offer?.owner_id,
-        start_date: proposal?.demand?.dispo_de,
-        end_date: proposal?.demand?.dispo_a,
-        proposal_id: proposalId,
-        total_price: 0
-      });
-
-      if (reservationError) {
-        return { data: null, error: reservationError };
+      const normalizedStatus = String(proposal?.status || '')?.trim()?.toLowerCase();
+      if (normalizedStatus !== 'sent') {
+        return {
+          data: null,
+          error: { message: 'Cette proposition ne peut plus être utilisée pour lancer un paiement.' }
+        };
       }
 
-      // Notify offer owner
-      await notificationService?.createNotification(
-        proposal?.proposer_id,
-        'proposal_accepted',
-        {
-          proposalId,
-          reservationId: reservation?.id,
-          demanderId: user?.id
-        }
-      );
+      if (!proposal?.offer_id || !proposal?.offer || !proposal?.demand?.dispo_de || !proposal?.demand?.dispo_a) {
+        return {
+          data: null,
+          error: { message: 'Cette proposition ne contient pas assez d’informations pour lancer le paiement.' }
+        };
+      }
 
-      return { data: { proposal, reservation }, error: null };
+      return { data: proposal, error: null };
     } catch (error) {
       console.error('Accept proposal error:', error);
       throw error;

@@ -2,145 +2,198 @@ import React, { useState } from 'react';
 import Icon from './AppIcon';
 import Button from './ui/Button';
 import Select from './ui/Select';
+import reportService from '../services/reportService';
+import { useAuth } from '../contexts/AuthContext';
+import { isAdminVerificationScenario } from '../utils/adminVerificationContext';
+
+const REPORT_CATEGORIES = [
+  { value: 'inappropriate', label: 'Annonce inappropriee' },
+  { value: 'illegal', label: 'Contenu illegal' },
+  { value: 'scam', label: 'Arnaque' },
+  { value: 'suspicious', label: 'Utilisateur suspect' },
+  { value: 'other', label: 'Autre' }
+];
 
 const ReportModal = ({ onClose, reportType = 'listing', targetId, targetName }) => {
+  const { user } = useAuth();
+  const isVerificationReportScenario = isAdminVerificationScenario('partial_reporting_front_only');
   const [reportCategory, setReportCategory] = useState('');
   const [description, setDescription] = useState('');
   const [evidenceFiles, setEvidenceFiles] = useState([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitMessage, setSubmitMessage] = useState('');
+  const [submitError, setSubmitError] = useState('');
 
-  const reportCategories = [
-    { value: 'inappropriate', label: 'Annonce inappropriée' },
-    { value: 'illegal', label: 'Contenu illégal' },
-    { value: 'scam', label: 'Arnaque' },
-    { value: 'suspicious', label: 'Utilisateur suspect' },
-    { value: 'other', label: 'Autre' }
-  ];
-
-  const handleFileChange = (e) => {
-    const files = Array.from(e?.target?.files);
-    if (files?.length + evidenceFiles?.length > 5) {
-      alert('Vous ne pouvez ajouter que 5 fichiers maximum');
+  const handleFileChange = (event) => {
+    const files = Array.from(event?.target?.files || []);
+    if ((files?.length || 0) + evidenceFiles?.length > 5) {
+      window.alert('Vous ne pouvez ajouter que 5 fichiers maximum');
       return;
     }
-    setEvidenceFiles(prev => [...prev, ...files]);
+
+    setEvidenceFiles((previous) => [...previous, ...files]);
   };
 
   const removeFile = (index) => {
-    setEvidenceFiles(prev => prev?.filter((_, i) => i !== index));
+    setEvidenceFiles((previous) => previous?.filter((_, fileIndex) => fileIndex !== index));
   };
 
-  const handleSubmit = async (e) => {
-    e?.preventDefault();
+  const handleSubmit = async (event) => {
+    event?.preventDefault();
+    setSubmitMessage('');
+    setSubmitError('');
 
     if (!reportCategory) {
-      alert('Veuillez sélectionner un type de signalement');
+      window.alert('Veuillez selectionner un type de signalement');
       return;
     }
 
     if (!description?.trim()) {
-      alert('Veuillez décrire le problème');
+      window.alert('Veuillez decrire le probleme');
       return;
     }
 
     setIsSubmitting(true);
 
-    // Simuler un appel API
-    setTimeout(() => {
-      console.log('Report submitted:', {
+    try {
+      const { data, error } = await reportService.submitReport({
         reportType,
         targetId,
         targetName,
         category: reportCategory,
         description,
-        evidenceCount: evidenceFiles?.length
+        evidenceFiles,
+        reporterEmail: user?.email || ''
       });
+
+      if (error) throw error;
+
+      setSubmitMessage(`Signalement envoye sous la reference #${data?.id || 'N/A'}.`);
+      setReportCategory('');
+      setDescription('');
+      setEvidenceFiles([]);
+    } catch (error) {
+      console.error('Erreur lors de l’envoi du signalement:', error);
+      setSubmitError(error?.message || "Impossible d'envoyer le signalement.");
+    } finally {
       setIsSubmitting(false);
-      alert('Votre signalement a été envoyé. Notre équipe l\'examinera dans les plus brefs délais.');
-      onClose();
-    }, 1500);
+    }
+  };
+
+  const handleVerificationSubmit = async () => {
+    setSubmitMessage('');
+    setSubmitError('');
+    setIsSubmitting(true);
+
+    try {
+      const { data, error } = await reportService.submitReport({
+        reportType,
+        targetId,
+        targetName,
+        category: 'other',
+        description: 'Signalement de verification admin pour controle end-to-end.',
+        evidenceFiles: [],
+        reporterEmail: user?.email || ''
+      });
+
+      if (error) throw error;
+
+      setSubmitMessage(`Signalement de verification envoye sous la reference #${data?.id || 'N/A'}.`);
+    } catch (error) {
+      console.error('Erreur lors de l envoi du signalement de verification:', error);
+      setSubmitError(error?.message || "Impossible d'envoyer le signalement de verification.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-      <div className="bg-white rounded-lg max-w-2xl w-full my-8">
-        {/* En-tête */}
-        <div className="sticky top-0 bg-white border-b border-border px-6 py-4 flex items-center justify-between rounded-t-lg">
-          <h2 className="text-xl font-bold text-foreground">Signaler un problème</h2>
+    <div className="modal-viewport z-50 bg-black/50">
+      <div className="modal-card modal-card-shell my-4 max-w-2xl rounded-lg bg-white">
+        <div className="sticky top-0 flex items-center justify-between rounded-t-lg border-b border-border bg-white px-6 py-4">
+          <h2 className="text-xl font-bold text-foreground">Signaler un probleme</h2>
           <button
+            type="button"
             onClick={onClose}
-            className="text-muted-foreground hover:text-foreground transition-colors"
+            className="text-muted-foreground transition-colors hover:text-foreground"
+            aria-label="Fermer le signalement"
           >
             <Icon name="X" size={24} />
           </button>
         </div>
 
-        {/* Contenu */}
-        <form onSubmit={handleSubmit} className="px-6 py-6 space-y-6">
-          {/* Cible signalee */}
-          <div className="bg-surface rounded-lg p-4">
-            <p className="text-sm text-muted-foreground mb-1">
-              {reportType === 'listing' ? 'Annonce signalée' : 'Utilisateur signalé'}
+        <form onSubmit={handleSubmit} className="modal-card-body space-y-6 px-6 py-6">
+          {submitMessage ? (
+            <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+              {submitMessage}
+            </div>
+          ) : null}
+
+          {submitError ? (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {submitError}
+            </div>
+          ) : null}
+
+          <div className="rounded-lg bg-surface p-4">
+            <p className="mb-1 text-sm text-muted-foreground">
+              {reportType === 'listing' ? 'Annonce signalee' : 'Utilisateur signale'}
             </p>
             <p className="font-medium text-foreground">{targetName}</p>
           </div>
 
-          {/* Categorie du signalement */}
           <Select
+            id="listing-report-category"
             label="Type de signalement"
-            placeholder="Sélectionnez un type"
-            options={reportCategories}
+            placeholder="Selectionnez un type"
+            options={REPORT_CATEGORIES}
             value={reportCategory}
             onChange={setReportCategory}
             required
           />
 
-          {/* Description */}
           <div>
-            <label className="block text-sm font-medium text-foreground mb-2">
-              Description du problème <span className="text-error">*</span>
+            <label htmlFor="listing-report-description" className="mb-2 block text-sm font-medium text-foreground">
+              Description du probleme <span className="text-error">*</span>
             </label>
             <textarea
+              id="listing-report-description"
               value={description}
-              onChange={(e) => setDescription(e?.target?.value)}
-              placeholder="Décrivez en détail le problème rencontré..."
-              className="w-full border border-border rounded-md p-3 text-sm min-h-[120px] focus:outline-none focus:ring-2 focus:ring-[#17a2b8]"
+              onChange={(event) => setDescription(event?.target?.value)}
+              placeholder="Decrivez en detail le probleme rencontre..."
+              className="min-h-[120px] w-full rounded-md border border-border p-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#17a2b8]"
               required
             />
-            <p className="text-xs text-muted-foreground mt-1">
-              Soyez aussi précis que possible pour nous aider à traiter votre signalement
+            <p className="mt-1 text-xs text-muted-foreground">
+              Soyez aussi precis que possible pour nous aider a traiter votre signalement.
             </p>
           </div>
 
-          {/* Téléversement des preuves */}
           <div>
-            <label className="block text-sm font-medium text-foreground mb-2">
-              Preuves (optionnel)
-            </label>
-            <div className="border-2 border-dashed border-border rounded-lg p-6 text-center">
+            <label className="mb-2 block text-sm font-medium text-foreground">Preuves (optionnel)</label>
+            <div className="rounded-lg border-2 border-dashed border-border p-6 text-center">
               <input
                 type="file"
-                id="evidence-upload"
+                id="listing-report-evidence-upload"
                 multiple
                 accept="image/*,.pdf"
                 onChange={handleFileChange}
                 className="hidden"
               />
               <label
-                htmlFor="evidence-upload"
-                className="cursor-pointer inline-flex flex-col items-center"
+                htmlFor="listing-report-evidence-upload"
+                className="inline-flex cursor-pointer flex-col items-center"
               >
-                <Icon name="Upload" size={32} className="text-muted-foreground mb-2" />
-                <p className="text-sm text-foreground font-medium">Cliquez pour ajouter des fichiers</p>
-                <p className="text-xs text-muted-foreground mt-1">Images ou PDF (max 5 fichiers)</p>
+                <Icon name="Upload" size={32} className="mb-2 text-muted-foreground" />
+                <p className="text-sm font-medium text-foreground">Cliquez pour ajouter des fichiers</p>
+                <p className="mt-1 text-xs text-muted-foreground">Images ou PDF, 5 fichiers maximum</p>
               </label>
             </div>
 
-            {/* Liste des fichiers */}
-            {evidenceFiles?.length > 0 && (
+            {evidenceFiles?.length > 0 ? (
               <div className="mt-4 space-y-2">
                 {evidenceFiles?.map((file, index) => (
-                  <div key={index} className="flex items-center justify-between bg-surface rounded-lg p-3">
+                  <div key={`${file?.name}-${index}`} className="flex items-center justify-between rounded-lg bg-surface p-3">
                     <div className="flex items-center gap-3">
                       <Icon name="File" size={20} className="text-muted-foreground" />
                       <span className="text-sm text-foreground">{file?.name}</span>
@@ -148,28 +201,46 @@ const ReportModal = ({ onClose, reportType = 'listing', targetId, targetName }) 
                     <button
                       type="button"
                       onClick={() => removeFile(index)}
-                      className="text-error hover:text-error/80 transition-colors"
+                      className="text-error transition-colors hover:text-error/80"
                     >
                       <Icon name="Trash2" size={16} />
                     </button>
                   </div>
                 ))}
               </div>
-            )}
+            ) : null}
           </div>
 
-          {/* Bloc d'information */}
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex gap-3">
-            <Icon name="Info" size={20} className="text-blue-600 flex-shrink-0" />
-            <div className="text-sm text-blue-900">
-              <p className="font-medium mb-1">Que se passe-t-il après?</p>
-              <p>Notre équipe de modération examinera votre signalement dans les 24-48h. Vous recevrez une notification dès que des mesures auront été prises.</p>
+          <div className="flex gap-3 rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+            <Icon name="Info" size={20} className="mt-0.5 flex-shrink-0 text-blue-600" />
+            <div>
+              <p className="mb-1 font-medium">Que se passe-t-il ensuite ?</p>
+              <p>Notre equipe de moderation examinera votre signalement puis le fera remonter dans l’admin.</p>
             </div>
           </div>
+          {isVerificationReportScenario ? (
+            <div className="rounded-lg border border-green-200 bg-green-50 p-4">
+              <p className="text-sm font-medium text-green-900">Verification admin</p>
+              <p className="mt-1 text-sm text-green-800">
+                Ce bouton envoie un signalement pre-rempli pour la verification end-to-end.
+              </p>
+              <div className="mt-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => void handleVerificationSubmit()}
+                  loading={isSubmitting}
+                  disabled={isSubmitting}
+                  data-testid="listing-report-verification-submit"
+                >
+                  Envoyer un signalement de verification
+                </Button>
+              </div>
+            </div>
+          ) : null}
         </form>
 
-        {/* Pied de fen?tre */}
-        <div className="sticky bottom-0 bg-surface border-t border-border px-6 py-4 rounded-b-lg flex gap-3">
+        <div className="sticky bottom-0 flex gap-3 rounded-b-lg border-t border-border bg-surface px-6 py-4">
           <Button
             type="button"
             variant="outline"
@@ -185,6 +256,7 @@ const ReportModal = ({ onClose, reportType = 'listing', targetId, targetName }) 
             className="flex-1"
             loading={isSubmitting}
             disabled={isSubmitting}
+            data-testid="listing-report-submit"
           >
             {isSubmitting ? 'Envoi en cours...' : 'Envoyer le signalement'}
           </Button>
@@ -195,4 +267,3 @@ const ReportModal = ({ onClose, reportType = 'listing', targetId, targetName }) 
 };
 
 export default ReportModal;
-

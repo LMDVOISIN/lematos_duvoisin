@@ -50,7 +50,35 @@ function BrandPinterest({
     );
 }
 
+function BrandTikTok({
+    size = 24,
+    color = "currentColor",
+    className = "",
+    ...props
+}) {
+    return (
+        <svg
+            width={size}
+            height={size}
+            viewBox="0 0 24 24"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+            className={className}
+            {...props}
+        >
+            <path
+                d="M9 12a4 4 0 1 0 4 4V4c1.333 1.333 2.667 2 4 2"
+                stroke={color}
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+            />
+        </svg>
+    );
+}
+
 const CUSTOM_ICONS = {
+    BrandTikTok,
     BrandPinterest,
     BrandX
 };

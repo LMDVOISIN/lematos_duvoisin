@@ -1,16 +1,33 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { Helmet } from 'react-helmet';
 import { Link, Navigate, useLocation } from 'react-router-dom';
 import Icon from '../../components/AppIcon';
-import Image from '../../components/AppImage';
 import AuthTabs from './components/AuthTabs';
 import LoginForm from './components/LoginForm';
 import RegisterForm from './components/RegisterForm';
 import SocialAuth from './components/SocialAuth';
 import ForgotPasswordModal from './components/ForgotPasswordModal';
-import TrustSignals from './components/TrustSignals';
 import Footer from '../../components/Footer';
+import { ActionCard } from '../../components/page/ActionPageLayout';
 import { useAuth } from '../../contexts/AuthContext';
+
+const AUTH_QUICK_STEPS = [
+  {
+    icon: 'LogIn',
+    title: '1. Entrer',
+    description: 'Connexion ou inscription, au plus simple.'
+  },
+  {
+    icon: 'Search',
+    title: '2. Avancer',
+    description: 'Reprendre une reservation, publier ou louer.'
+  },
+  {
+    icon: 'ShieldCheck',
+    title: '3. Continuer',
+    description: 'Votre parcours repart tout de suite au bon endroit.'
+  }
+];
 
 const Authentication = () => {
   const location = useLocation();
@@ -32,12 +49,12 @@ const Authentication = () => {
           <title>Connexion & Inscription - Le Matos Du Voisin</title>
           <meta name="description" content="Chargement de la session utilisateur" />
         </Helmet>
-        <div className="min-h-screen bg-gradient-to-b from-[#e9f4ff] via-[#f2f8ff] to-[#e7f5ff] flex items-center justify-center px-4">
+        <div className="flex min-h-screen items-center justify-center bg-[linear-gradient(180deg,#eef8ff_0%,#f7fbff_100%)] px-4">
           <div className="text-center">
-            <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-white/70 mb-4">
+            <div className="mx-auto mb-4 inline-flex h-14 w-14 items-center justify-center rounded-full bg-white shadow-sm">
               <Icon name="Loader2" size={24} className="animate-spin text-primary" />
             </div>
-            <p className="text-sm text-muted-foreground">Chargement...</p>
+            <p className="text-sm text-slate-600">Chargement...</p>
           </div>
         </div>
       </>
@@ -52,99 +69,83 @@ const Authentication = () => {
     <>
       <Helmet>
         <title>Connexion & Inscription - Le Matos Du Voisin</title>
-        <meta name="description" content="Connectez-vous ou créez votre compte pour louer du matériel entre voisins en toute sécurité" />
+        <meta
+          name="description"
+          content="Connectez-vous ou creez votre compte pour louer du materiel entre voisins en toute securite"
+        />
       </Helmet>
-      <div className="min-h-screen bg-gradient-to-b from-[#e9f4ff] via-[#f2f8ff] to-[#e7f5ff] flex flex-col">
-        <div className="flex-1 flex items-center justify-center p-4 md:p-6 lg:items-start lg:pt-10 lg:pb-8">
-          <div className="w-full max-w-6xl">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8 lg:gap-12 items-start">
-              <div className="hidden lg:block">
-                <div className="space-y-6">
-                  <Link to="/accueil-recherche" className="flex items-center gap-3">
-                    <img
-                      src="/assets/images/android-chrome-192x192-1771179342850.png"
-                      alt="Logo Le Matos Du Voisin - poignée de main formant un cœur"
-                      className="w-12 h-12 object-contain"
-                    />
-                    <h1 className="text-3xl lg:text-4xl font-bold text-foreground">
-                      Le Matos Du Voisin
-                    </h1>
-                  </Link>
 
-                  <div className="space-y-4">
-                    <h2 className="text-2xl lg:text-3xl font-semibold text-foreground">
-                      Louez du matériel entre voisins
-                    </h2>
-                    <p className="text-base lg:text-lg text-muted-foreground">
-                      Accédez à des milliers d'équipements disponibles près de chez vous. Économisez de l'argent et participez à l'économie collaborative.
-                    </p>
-                  </div>
+      <div className="flex min-h-screen flex-col bg-[linear-gradient(180deg,#eef8ff_0%,#f7fbff_100%)]">
+        <main className="relative flex-1 overflow-hidden px-4 pb-10 pt-6 md:px-6 md:pt-8">
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-x-0 top-0 h-80 bg-[radial-gradient(circle_at_top_left,_rgba(255,236,168,0.42),_transparent_34%),radial-gradient(circle_at_top_right,_rgba(184,230,255,0.34),_transparent_30%),radial-gradient(circle_at_center,_rgba(219,245,238,0.38),_transparent_44%)]"
+          />
 
-                  <div className="space-y-4">
-                    {[
-                      {
-                        icon: 'CheckCircle',
-                        title: 'Paiement sécurisé',
-                        description: 'Transactions protégées avec workflow encadré des cautions'
-                      },
-                      {
-                        icon: 'ShieldCheck',
-                        title: 'Litiges encadrés',
-                        description: "État des lieux, contestation et modération selon les conditions applicables"
-                      },
-                      {
-                        icon: 'BadgeCheck',
-                        title: 'Vérification des profils',
-                        description: 'Controle des comptes et moderation continue pour des echanges fiables'
-                      },
-                      {
-                        icon: 'MessageSquare',
-                        title: 'Communication directe',
-                        description: 'Échangez facilement avec les propriétaires via notre messagerie intégrée'
-                      }
-                    ]?.map((feature, index) => (
-                      <div key={index} className="flex items-start gap-3">
-                        <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-success/10 flex-shrink-0 mt-1">
-                          <Icon name={feature?.icon} size={20} color="var(--color-success)" />
-                        </div>
-                        <div className="flex-1">
-                          <h3 className="text-base font-semibold text-foreground mb-1">
-                            {feature?.title}
-                          </h3>
-                          <p className="text-sm text-muted-foreground">
-                            {feature?.description}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+          <div className="relative mx-auto flex w-full max-w-6xl flex-col gap-6">
+            <Link to="/accueil-recherche" className="inline-flex items-center gap-3 self-start rounded-full border border-white/70 bg-white/85 px-4 py-2 shadow-sm">
+              <img
+                src="/assets/images/android-chrome-192x192-1771179342850.png"
+                alt="Logo Le Matos Du Voisin"
+                className="h-10 w-10 object-contain"
+              />
+              <span className="text-sm font-semibold text-slate-950 md:text-base">Le Matos Du Voisin</span>
+            </Link>
 
-                  <div className="relative h-64 lg:h-80 rounded-xl overflow-hidden shadow-elevation-3">
-                    <Image
-                      src="https://img.rocket.new/generatedImages/rocket_gen_img_1d59048a9-1765819001368.png"
-                      alt="Deux personnes souriantes échangeant du matériel de bricolage dans un garage résidentiel moderne avec outils et équipements en arrière-plan"
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
+            <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(420px,500px)] lg:items-start">
+              <section className="space-y-5">
+                <div className="inline-flex rounded-full border border-white/70 bg-white/85 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-[#0f7081]">
+                  Connexion simple
                 </div>
-              </div>
 
-              <div className="w-full">
-                <div className="bg-card rounded-xl shadow-elevation-3 border border-border p-6 md:p-8">
-                  <div className="lg:hidden mb-6">
-                    <Link to="/accueil-recherche" className="flex items-center gap-3 justify-center mb-4">
-                      <img
-                        src="/assets/images/android-chrome-192x192-1771179342850.png"
-                        alt="Logo Le Matos Du Voisin - poignée de main formant un cœur"
-                        className="w-12 h-12 object-contain"
-                      />
-                      <h1 className="text-2xl font-bold text-foreground">
-                        Le Matos Du Voisin
-                      </h1>
-                    </Link>
-                    <p className="text-center text-sm text-muted-foreground">
-                      Louez du matériel entre voisins en toute sécurité
-                    </p>
+                <div className="space-y-3">
+                  <h1 className="max-w-2xl text-3xl font-semibold leading-tight text-slate-950 md:text-5xl">
+                    Entrez, puis reprenez votre parcours tout de suite
+                  </h1>
+                  <p className="max-w-xl text-sm text-slate-600 md:text-base">
+                    Ici, une seule chose compte: vous connecter vite pour louer, publier ou reprendre une reservation.
+                  </p>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-3">
+                  {AUTH_QUICK_STEPS?.map((item) => (
+                    <ActionCard key={item?.title} className="rounded-3xl border-white/80 bg-white/88 p-4 md:p-5">
+                      <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-sky-50 text-sky-700">
+                        <Icon name={item?.icon} size={18} />
+                      </div>
+                      <p className="mt-4 text-base font-semibold text-slate-950">{item?.title}</p>
+                      <p className="mt-1 text-sm text-slate-600">{item?.description}</p>
+                    </ActionCard>
+                  ))}
+                </div>
+
+                <ActionCard className="rounded-[28px] border-emerald-200/80 bg-emerald-50/80 p-5">
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white text-emerald-700 shadow-sm">
+                      <Icon name="ShieldCheck" size={18} />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-slate-950">A retenir</p>
+                      <p className="mt-1 text-sm text-emerald-900">
+                        Une fois connecte, vous repartez directement vers la bonne page.
+                      </p>
+                    </div>
+                  </div>
+                </ActionCard>
+              </section>
+
+              <ActionCard className="rounded-[32px] border-white/80 bg-white/94 p-6 md:p-8">
+                <div className="space-y-5">
+                  <div className="space-y-3">
+                    <div className="flex flex-wrap gap-2">
+                      <span className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">Connexion</span>
+                      <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">Inscription</span>
+                      <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">Acces rapide</span>
+                    </div>
+                    <div>
+                      <h2 className="text-2xl font-semibold text-slate-950">Entrez ici</h2>
+                      <p className="mt-1 text-sm text-slate-600">Choisissez votre mode, puis avancez.</p>
+                    </div>
                   </div>
 
                   <AuthTabs activeTab={activeTab} onTabChange={setActiveTab} />
@@ -155,32 +156,30 @@ const Authentication = () => {
                     <RegisterForm />
                   )}
 
-                  <div className="mt-6 md:mt-8">
+                  <div className="border-t border-slate-100 pt-5">
                     <SocialAuth />
                   </div>
-
-                  <TrustSignals />
                 </div>
-
-                <div className="mt-4 text-center">
-                  <p className="text-xs md:text-sm text-muted-foreground">
-                    En vous connectant, vous acceptez nos{' '}
-                    <a href="#" className="text-primary hover:underline">
-                      Conditions d'utilisation
-                    </a>{' '}
-                    et notre{' '}
-                    <a href="#" className="text-primary hover:underline">
-                      Politique de confidentialité
-                    </a>
-                  </p>
-                </div>
-              </div>
+              </ActionCard>
             </div>
+
+            <p className="mx-auto max-w-2xl text-center text-xs text-slate-500 md:text-sm">
+              En vous connectant, vous acceptez nos{' '}
+              <a href="/legal/cgu" className="text-primary hover:underline">
+                Conditions d'utilisation
+              </a>{' '}
+              et notre{' '}
+              <a href="/legal/politique-confidentialite" className="text-primary hover:underline">
+                Politique de confidentialite
+              </a>
+              .
+            </p>
           </div>
-        </div>
+        </main>
 
         <Footer />
       </div>
+
       <ForgotPasswordModal
         isOpen={showForgotPassword}
         onClose={() => setShowForgotPassword(false)}

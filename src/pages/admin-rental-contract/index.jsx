@@ -28,7 +28,7 @@ E-mail : {email_locataire}
 ARTICLE 1 - OBJET DE LA LOCATION
 - Désignation : {nom_equipement}
 - Description : {description_equipement}
-- ?tat : {etat_equipement}
+- État : {etat_equipement}
 
 ARTICLE 2 - DURÉE DE LA LOCATION
 - Date de début : {date_debut}
@@ -51,7 +51,7 @@ Une caution de {montant_caution} EUR est garantie uniquement par empreinte banca
 - empreinte CB autorisée (non débitée) au paiement puis libérée, maintenue ou capturée selon le workflow officiel de fin de location;
 - aucun frais de traitement ne s'applique tant que l'empreinte CB n'est pas capturée;
 - si la pièce d'identité n'est pas déposée à temps, la réservation peut être annulée, un jour de location conservé et le solde remboursé;
-- en cas de litige valide, l'empreinte CB peut etre capturee totalement ou partiellement selon le protocole officiel; dans ce cas, les frais de paiement carte sur le montant capture et d'eventuels frais de litige peuvent s'appliquer selon le reseau de carte.
+- en cas de litige valide, l'empreinte CB peut être capturée totalement ou partiellement selon le protocole officiel; dans ce cas, les frais de paiement carte sur le montant capturé et d'éventuels frais de litige peuvent s'appliquer selon le réseau de carte.
 
 Fait à {ville}, le {date_signature}
 
@@ -60,7 +60,7 @@ Signature du Loueur          Signature du Locataire`;
 const VARIABLES = [
   { name: '{nom_loueur}', description: 'Nom du propriétaire' },
   { name: '{nom_locataire}', description: 'Nom du locataire' },
-  { name: '{nom_equipement}', description: 'Nom de l??quipement' },
+  { name: '{nom_equipement}', description: "Nom de l'équipement" },
   { name: '{prix_journalier}', description: 'Prix par jour' },
   { name: '{prix_total}', description: 'Prix total de la location' },
   { name: '{montant_caution}', description: 'Montant de la caution' },

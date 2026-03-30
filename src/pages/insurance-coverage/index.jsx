@@ -1,306 +1,342 @@
 import React, { useState } from 'react';
-import Header from '../../components/navigation/Header';
-import Footer from '../../components/Footer';
 import Icon from '../../components/AppIcon';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
+import {
+  ActionCard,
+  ActionHero,
+  ActionPageShell
+} from '../../components/page/ActionPageLayout';
 
 const InsuranceCoverage = () => {
   const [equipmentValue, setEquipmentValue] = useState('');
   const [rentalDays, setRentalDays] = useState('');
   const [calculatedPremium, setCalculatedPremium] = useState(null);
+  const [openFaqIndex, setOpenFaqIndex] = useState(null);
 
   const benefits = [
     {
       icon: 'Shield',
-      title: 'Protection contre le vol',
-      description: 'Couverture complète en cas de vol de l\'équipement pendant la période de location'
+      title: 'Vol',
+      description: "Couverture pendant toute la location si l'equipement disparait."
     },
     {
       icon: 'AlertTriangle',
       title: 'Casse accidentelle',
-      description: 'Prise en charge des réparations ou remplacement en cas de dommages accidentels'
+      description: 'Prise en charge des dommages non intentionnels.'
     },
     {
       icon: 'Wrench',
-      title: 'Détérioration',
-      description: 'Protection contre l\'usure anormale et les détériorations non intentionnelles'
+      title: 'Deterioration',
+      description: "Protection quand l'etat du materiel se degrade de facon anormale."
     },
     {
       icon: 'Clock',
-      title: 'Assistance 24/7',
-      description: 'Support disponible à tout moment pour déclarer un sinistre'
+      title: 'Assistance',
+      description: 'Aide disponible pour declarer un sinistre et lancer la suite.'
     }
   ];
 
   const comparisonData = [
-    { feature: 'Vol de l\'équipement', withInsurance: true, withoutInsurance: false },
+    { feature: "Vol de l'equipement", withInsurance: true, withoutInsurance: false },
     { feature: 'Casse accidentelle', withInsurance: true, withoutInsurance: false },
-    { feature: 'Détérioration', withInsurance: true, withoutInsurance: false },
-    { feature: 'Franchise', withInsurance: '50€', withoutInsurance: 'Caution complète' },
-    { feature: 'Délai de remboursement', withInsurance: '48h', withoutInsurance: '7-14 jours' },
+    { feature: 'Deterioration', withInsurance: true, withoutInsurance: false },
+    { feature: 'Franchise', withInsurance: '50 EUR', withoutInsurance: 'Caution complete' },
+    { feature: 'Traitement', withInsurance: '48h', withoutInsurance: '7 a 14 jours' },
     { feature: 'Assistance', withInsurance: '24/7', withoutInsurance: 'Non disponible' }
   ];
 
   const claimsSteps = [
     {
       step: 1,
-      title: 'Déclaration immédiate',
-      description: 'Signalez le sinistre dans les 24h via votre espace personnel ou par téléphone'
+      title: 'Signaler',
+      description: 'Declarez le sinistre dans les 24h.'
     },
     {
       step: 2,
-      title: 'Documents justificatifs',
-      description: 'Fournissez les photos, factures et tout document prouvant le sinistre'
+      title: 'Envoyer les preuves',
+      description: 'Ajoutez photos et documents utiles.'
     },
     {
       step: 3,
-      title: 'Évaluation',
-      description: 'Notre équipe évalue le dossier sous 48h ouvrées'
+      title: 'Evaluation',
+      description: 'Le dossier est examine rapidement.'
     },
     {
       step: 4,
       title: 'Indemnisation',
-      description: 'Remboursement ou remplacement de l\'équipement selon les conditions'
+      description: 'Remboursement ou remplacement selon le dossier.'
     }
   ];
 
   const faqs = [
     {
-      question: 'Comment souscrire à l\'assurance ?',
-      answer: 'L\'assurance peut être souscrite lors de la réservation en cochant l\'option "Assurance complète". Elle est également disponible jusqu\'à 24h avant le début de la location.'
+      question: "Comment souscrire a l'assurance ?",
+      answer: "L'option est proposee au moment de la reservation, puis reste disponible jusqu'a 24h avant le debut de location."
     },
     {
-      question: 'Quel est le coût de l\'assurance ?',
-      answer: "Le coût est calculé à 8% de la valeur déclarée de l'équipement par jour de location, avec un minimum de 2€/jour."
+      question: 'Comment est calcule le prix ?',
+      answer: 'La prime correspond a 8% de la valeur declaree par jour de location, avec un minimum de 2 EUR par jour.'
     },
     {
-      question: 'Que couvre exactement l\'assurance ?',
-      answer: 'L\'assurance couvre le vol, la casse accidentelle, et la détérioration de l\'équipement pendant toute la durée de la location. Les dommages intentionnels ne sont pas couverts.'
+      question: "Que couvre l'assurance ?",
+      answer: 'Le vol, la casse accidentelle et la deterioration non intentionnelle pendant la location.'
     },
     {
-      question: 'Quelle est la franchise en cas de sinistre ?',
-      answer: 'La franchise est fixée à 50€ par sinistre. Le reste des frais de réparation ou de remplacement est pris en charge par l\'assurance.'
-    },
-    {
-      question: 'Puis-je annuler l\'assurance ?',
-      answer: 'L\'assurance peut être annulée jusqu\'à 24h avant le début de la location pour un remboursement complet. Après ce délai, aucun remboursement n\'est possible.'
-    },
-    {
-      question: 'Comment déclarer un sinistre ?',
-      answer: 'Connectez-vous à votre espace personnel, accédez à la réservation concernée et cliquez sur "Déclarer un sinistre". Vous pouvez également nous contacter par téléphone au 01 XX XX XX XX.'
+      question: 'Puis-je annuler ?',
+      answer: "Oui jusqu'a 24h avant le debut de location pour un remboursement complet."
     }
   ];
 
-  const [openFaqIndex, setOpenFaqIndex] = useState(null);
-
   const calculatePremium = () => {
-    const value = parseFloat(equipmentValue);
-    const days = parseInt(rentalDays);
+    const value = Number.parseFloat(equipmentValue);
+    const days = Number.parseInt(rentalDays, 10);
 
     if (!value || !days || value <= 0 || days <= 0) {
-      alert('Veuillez entrer des valeurs valides');
+      window.alert('Veuillez entrer des valeurs valides');
       return;
     }
 
-    // 8% of equipment value per day, minimum 2€/day
-    const dailyRate = Math.max((value * 0.08), 2);
+    const dailyRate = Math.max(value * 0.08, 2);
     const total = dailyRate * days;
 
     setCalculatedPremium({
-      dailyRate: dailyRate?.toFixed(2),
-      total: total?.toFixed(2),
-      equipmentValue: value?.toFixed(2),
+      dailyRate: dailyRate.toFixed(2),
+      total: total.toFixed(2),
+      equipmentValue: value.toFixed(2),
       days
     });
   };
 
   const toggleFaq = (index) => {
-    setOpenFaqIndex(openFaqIndex === index ? null : index);
+    setOpenFaqIndex((previous) => (previous === index ? null : index));
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-surface">
-      <Header />
-      <main className="flex-1 pt-20 pb-12">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          {/* Hero Section */}
-          <div className="bg-gradient-to-r from-[#17a2b8] to-[#138496] rounded-lg p-8 md:p-12 text-white mb-12">
-            <h1 className="text-3xl md:text-4xl font-bold mb-4">Assurance Location</h1>
-            <p className="text-lg md:text-xl opacity-90 max-w-3xl">
-              Louez en toute sérénité avec notre assurance complète. Protection contre le vol, la casse et la détérioration.
-            </p>
+    <ActionPageShell
+      maxWidth="max-w-6xl"
+      hero={(
+        <ActionHero
+          eyebrow="Assurance location"
+          title="Protection pendant la location"
+          subtitle="Estimez le cout puis voyez ce qui est couvert."
+          pills={[
+            { label: 'Calculateur', icon: 'Calculator' },
+            { label: 'Couverture', icon: 'Shield' },
+            { label: 'Sinistre', icon: 'TriangleAlert' }
+          ]}
+          tone="warm"
+        />
+      )}
+    >
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
+        <ActionCard className="space-y-5">
+          <div className="flex items-center gap-3">
+            <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-sky-50 text-sky-700">
+              <Icon name="Calculator" size={22} />
+            </span>
+            <div>
+              <h2 className="text-xl font-semibold text-slate-950">Calculateur express</h2>
+              <p className="text-sm text-slate-600">Entrez la valeur et la duree pour voir le cout tout de suite.</p>
+            </div>
           </div>
 
-          {/* Benefits Section */}
-          <section className="mb-12">
-            <h2 className="text-2xl font-bold text-foreground mb-6">Pourquoi souscrire à l'assurance ?</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              {benefits?.map((benefit, index) => (
-                <div key={index} className="bg-white rounded-lg p-6 shadow-elevation-1">
-                  <div className="w-12 h-12 bg-[#17a2b8]/10 rounded-lg flex items-center justify-center mb-4">
-                    <Icon name={benefit?.icon} size={24} className="text-[#17a2b8]" />
-                  </div>
-                  <h3 className="text-lg font-semibold text-foreground mb-2">{benefit?.title}</h3>
-                  <p className="text-sm text-muted-foreground">{benefit?.description}</p>
-                </div>
-              ))}
-            </div>
-          </section>
+          <div className="grid gap-4 md:grid-cols-2">
+            <Input
+              type="number"
+              label="Valeur de l'equipement (EUR)"
+              placeholder="Ex: 500"
+              value={equipmentValue}
+              onChange={(event) => setEquipmentValue(event?.target?.value || '')}
+            />
+            <Input
+              type="number"
+              label="Duree de location (jours)"
+              placeholder="Ex: 3"
+              value={rentalDays}
+              onChange={(event) => setRentalDays(event?.target?.value || '')}
+            />
+          </div>
 
-          {/* Pricing Calculator */}
-          <section className="mb-12">
-            <div className="bg-white rounded-lg p-8 shadow-elevation-2">
-              <h2 className="text-2xl font-bold text-foreground mb-6">Calculateur de prime</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                <Input
-                  type="number"
-                  label="Valeur de l'équipement (€)"
-                  placeholder="Ex: 500"
-                  value={equipmentValue}
-                  onChange={(e) => setEquipmentValue(e?.target?.value)}
-                />
-                <Input
-                  type="number"
-                  label="Durée de location (jours)"
-                  placeholder="Ex: 3"
-                  value={rentalDays}
-                  onChange={(e) => setRentalDays(e?.target?.value)}
-                />
-              </div>
-              <Button onClick={calculatePremium} className="w-full md:w-auto">
-                Calculer la prime
-              </Button>
-
-              {calculatedPremium && (
-                <div className="mt-6 p-6 bg-[#17a2b8]/5 rounded-lg border border-[#17a2b8]/20">
-                  <h3 className="text-lg font-semibold text-foreground mb-4">Résultat du calcul</h3>
-                  <div className="space-y-2">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Valeur de l'équipement:</span>
-                      <span className="font-semibold">{calculatedPremium?.equipmentValue} €</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Durée:</span>
-                      <span className="font-semibold">{calculatedPremium?.days} jour{calculatedPremium?.days > 1 ? 's' : ''}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Prime journalière:</span>
-                      <span className="font-semibold">{calculatedPremium?.dailyRate} €/jour</span>
-                    </div>
-                    <div className="h-px bg-border my-3" />
-                    <div className="flex justify-between text-lg">
-                      <span className="font-semibold text-foreground">Prime totale:</span>
-                      <span className="font-bold text-[#17a2b8]">{calculatedPremium?.total} €</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          </section>
-
-          {/* Comparison Table */}
-          <section className="mb-12">
-            <h2 className="text-2xl font-bold text-foreground mb-6">Avec ou sans assurance ?</h2>
-            <div className="bg-white rounded-lg shadow-elevation-2 overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="bg-surface">
-                      <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Caractéristique</th>
-                      <th className="px-6 py-4 text-center text-sm font-semibold text-[#17a2b8]">Avec assurance</th>
-                      <th className="px-6 py-4 text-center text-sm font-semibold text-muted-foreground">Sans assurance</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {comparisonData?.map((row, index) => (
-                      <tr key={index} className="border-t border-border">
-                        <td className="px-6 py-4 text-sm text-foreground">{row?.feature}</td>
-                        <td className="px-6 py-4 text-center">
-                          {typeof row?.withInsurance === 'boolean' ? (
-                            row?.withInsurance ? (
-                              <Icon name="Check" size={20} className="text-success mx-auto" />
-                            ) : (
-                              <Icon name="X" size={20} className="text-error mx-auto" />
-                            )
-                          ) : (
-                            <span className="text-sm font-medium text-foreground">{row?.withInsurance}</span>
-                          )}
-                        </td>
-                        <td className="px-6 py-4 text-center">
-                          {typeof row?.withoutInsurance === 'boolean' ? (
-                            row?.withoutInsurance ? (
-                              <Icon name="Check" size={20} className="text-success mx-auto" />
-                            ) : (
-                              <Icon name="X" size={20} className="text-error mx-auto" />
-                            )
-                          ) : (
-                            <span className="text-sm text-muted-foreground">{row?.withoutInsurance}</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </section>
-
-          {/* Claims Process */}
-          <section className="mb-12">
-            <h2 className="text-2xl font-bold text-foreground mb-6">Processus de déclaration de sinistre</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              {claimsSteps?.map((step) => (
-                <div key={step?.step} className="bg-white rounded-lg p-6 shadow-elevation-1">
-                  <div className="w-10 h-10 bg-[#17a2b8] text-white rounded-full flex items-center justify-center font-bold text-lg mb-4">
-                    {step?.step}
-                  </div>
-                  <h3 className="text-lg font-semibold text-foreground mb-2">{step?.title}</h3>
-                  <p className="text-sm text-muted-foreground">{step?.description}</p>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          {/* FAQ Section */}
-          <section className="mb-12">
-            <h2 className="text-2xl font-bold text-foreground mb-6">Questions fréquentes</h2>
-            <div className="bg-white rounded-lg shadow-elevation-2 divide-y divide-border">
-              {faqs?.map((faq, index) => (
-                <div key={index} className="p-6">
-                  <button
-                    onClick={() => toggleFaq(index)}
-                    className="w-full flex items-center justify-between text-left"
-                  >
-                    <h3 className="text-lg font-semibold text-foreground pr-4">{faq?.question}</h3>
-                    <Icon
-                      name={openFaqIndex === index ? 'ChevronUp' : 'ChevronDown'}
-                      size={20}
-                      className="text-muted-foreground flex-shrink-0"
-                    />
-                  </button>
-                  {openFaqIndex === index && (
-                    <p className="mt-4 text-muted-foreground">{faq?.answer}</p>
-                  )}
-                </div>
-              ))}
-            </div>
-          </section>
-
-          {/* CTA Section */}
-          <section className="bg-gradient-to-r from-[#17a2b8] to-[#138496] rounded-lg p-8 text-center text-white">
-            <h2 className="text-2xl font-bold mb-4">Prêt à louer en toute sérénité ?</h2>
-            <p className="text-lg opacity-90 mb-6 max-w-2xl mx-auto">
-              Souscrivez à l'assurance lors de votre prochaine réservation et profitez d'une protection complète.
-            </p>
-            <Button variant="secondary" size="lg" onClick={() => window.location.href = '/accueil-recherche'}>
-              Parcourir les annonces
+          <div className="flex flex-wrap gap-3">
+            <Button onClick={calculatePremium}>
+              <Icon name="Calculator" size={18} />
+              Calculer ma prime
             </Button>
-          </section>
+            <Button variant="outline" onClick={() => window.location.href = '/accueil-recherche'}>
+              Voir les annonces
+            </Button>
+          </div>
+
+          {calculatedPremium ? (
+            <div className="rounded-[24px] border border-sky-200 bg-sky-50/80 p-5">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-sky-700">Resultat</p>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <div className="rounded-2xl bg-white px-4 py-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Valeur</p>
+                  <p className="mt-2 text-lg font-semibold text-slate-950">{calculatedPremium?.equipmentValue} EUR</p>
+                </div>
+                <div className="rounded-2xl bg-white px-4 py-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Duree</p>
+                  <p className="mt-2 text-lg font-semibold text-slate-950">
+                    {calculatedPremium?.days} jour{calculatedPremium?.days > 1 ? 's' : ''}
+                  </p>
+                </div>
+                <div className="rounded-2xl bg-white px-4 py-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Prime par jour</p>
+                  <p className="mt-2 text-lg font-semibold text-slate-950">{calculatedPremium?.dailyRate} EUR</p>
+                </div>
+                <div className="rounded-2xl bg-slate-950 px-4 py-3 text-white">
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-white/70">Total</p>
+                  <p className="mt-2 text-2xl font-semibold">{calculatedPremium?.total} EUR</p>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-[24px] border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-600">
+              Entrez vos chiffres puis lancez le calcul. Le montant s'affiche ici sans changer le parcours.
+            </div>
+          )}
+        </ActionCard>
+
+        <ActionCard className="space-y-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Couverture</p>
+            <h2 className="mt-1 text-2xl font-semibold text-slate-950">Ce que vous protegez</h2>
+          </div>
+
+          <div className="grid gap-3">
+            {benefits?.map((benefit) => (
+              <div key={benefit?.title} className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-4">
+                <div className="flex items-start gap-3">
+                  <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white text-[#0f7081] shadow-sm">
+                    <Icon name={benefit?.icon} size={18} />
+                  </span>
+                  <div>
+                    <p className="font-semibold text-slate-950">{benefit?.title}</p>
+                    <p className="mt-1 text-sm text-slate-600">{benefit?.description}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="rounded-[24px] border border-amber-200 bg-amber-50/80 px-4 py-4 text-sm text-amber-900">
+            Sans assurance, la caution complete peut rester le principal filet de securite.
+          </div>
+        </ActionCard>
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(320px,0.9fr)]">
+        <ActionCard className="overflow-hidden p-0">
+          <div className="border-b border-slate-200 px-6 py-5">
+            <h2 className="text-xl font-semibold text-slate-950">Avec ou sans assurance</h2>
+            <p className="mt-1 text-sm text-slate-600">Le but est de voir tout de suite ce qui change.</p>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="bg-slate-50">
+                  <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Point compare</th>
+                  <th className="px-6 py-4 text-center text-xs font-semibold uppercase tracking-[0.14em] text-sky-700">Avec</th>
+                  <th className="px-6 py-4 text-center text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Sans</th>
+                </tr>
+              </thead>
+              <tbody>
+                {comparisonData?.map((row) => (
+                  <tr key={row?.feature} className="border-t border-slate-200">
+                    <td className="px-6 py-4 text-sm font-medium text-slate-900">{row?.feature}</td>
+                    <td className="px-6 py-4 text-center">
+                      {typeof row?.withInsurance === 'boolean' ? (
+                        row?.withInsurance ? (
+                          <Icon name="Check" size={18} className="mx-auto text-emerald-600" />
+                        ) : (
+                          <Icon name="X" size={18} className="mx-auto text-rose-600" />
+                        )
+                      ) : (
+                        <span className="text-sm font-semibold text-slate-900">{row?.withInsurance}</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      {typeof row?.withoutInsurance === 'boolean' ? (
+                        row?.withoutInsurance ? (
+                          <Icon name="Check" size={18} className="mx-auto text-emerald-600" />
+                        ) : (
+                          <Icon name="X" size={18} className="mx-auto text-rose-600" />
+                        )
+                      ) : (
+                        <span className="text-sm text-slate-600">{row?.withoutInsurance}</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </ActionCard>
+
+        <ActionCard className="space-y-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">En cas de pepin</p>
+            <h2 className="mt-1 text-2xl font-semibold text-slate-950">La suite, etape par etape</h2>
+          </div>
+
+          <div className="space-y-3">
+            {claimsSteps?.map((step) => (
+              <div key={step?.step} className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-4">
+                <div className="flex items-start gap-3">
+                  <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-950 text-sm font-semibold text-white">
+                    {step?.step}
+                  </span>
+                  <div>
+                    <p className="font-semibold text-slate-950">{step?.title}</p>
+                    <p className="mt-1 text-sm text-slate-600">{step?.description}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </ActionCard>
+      </div>
+
+      <ActionCard className="space-y-3">
+        <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Questions rapides</p>
+            <h2 className="mt-1 text-2xl font-semibold text-slate-950">FAQ utile</h2>
+          </div>
+          <p className="text-sm text-slate-600">Ouvrez seulement la reponse qu'il vous faut.</p>
         </div>
-      </main>
-      <Footer />
-    </div>
+
+        <div className="space-y-3">
+          {faqs?.map((faq, index) => {
+            const isOpen = openFaqIndex === index;
+
+            return (
+              <div key={faq?.question} className="overflow-hidden rounded-[24px] border border-slate-200 bg-white">
+                <button
+                  type="button"
+                  onClick={() => toggleFaq(index)}
+                  className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left"
+                >
+                  <p className="text-sm font-semibold text-slate-950 md:text-base">{faq?.question}</p>
+                  <span className={`flex h-10 w-10 items-center justify-center rounded-2xl ${isOpen ? 'bg-sky-50 text-sky-700' : 'bg-slate-100 text-slate-500'}`}>
+                    <Icon name={isOpen ? 'ChevronUp' : 'ChevronDown'} size={18} />
+                  </span>
+                </button>
+
+                {isOpen ? (
+                  <div className="border-t border-slate-200 bg-slate-50 px-5 py-4">
+                    <p className="text-sm text-slate-700">{faq?.answer}</p>
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      </ActionCard>
+    </ActionPageShell>
   );
 };
 

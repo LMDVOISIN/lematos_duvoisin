@@ -1,13 +1,19 @@
 import React, { Suspense } from "react";
 import { BrowserRouter, Routes as RouterRoutes, Route, Navigate, useParams, useLocation } from "react-router-dom";
-import ScrollToTop from "components/ScrollToTop";
-import ErrorBoundary from "components/ErrorBoundary";
+import ScrollToTop from "./components/ScrollToTop";
+import ErrorBoundary from "./components/ErrorBoundary";
 import CookieAwareAnalytics from "./components/cookies/CookieAwareAnalytics";
 import NativeAppUrlHandler from "./components/NativeAppUrlHandler";
+import TestModeLayout from "./components/TestModeLayout";
+import RouteVerificationMarker from "./components/verification/RouteVerificationMarker";
 import { useAuth } from "./contexts/AuthContext";
 import { isAdminAccessGranted } from "./utils/adminAccessGate";
+import {
+  ACCOUNT_SECTION_PATHS,
+  resolveLegacyAccountTabPath
+} from './pages/user-profile-documents/accountNavigation';
 import HomeSearch from './pages/home-search';
-const NotFound = React.lazy(() => import("pages/NotFound"));
+const NotFound = React.lazy(() => import("./pages/NotFound"));
 const Authentication = React.lazy(() => import('./pages/authentication'));
 const AdminAccess = React.lazy(() => import('./pages/admin-access'));
 const EquipmentDetail = React.lazy(() => import('./pages/equipment-detail'));
@@ -18,7 +24,8 @@ const UserProfileDocuments = React.lazy(() => import('./pages/user-profile-docum
 const BookingRequest = React.lazy(() => import('./pages/booking-request'));
 const PaymentProcessing = React.lazy(() => import('./pages/payment-processing'));
 const VerificationIdentiteLocation = React.lazy(() => import('./pages/verification-identite-location'));
-const UserDashboard = React.lazy(() => import('./pages/user-dashboard'));
+const Messages = React.lazy(() => import('./pages/messages'));
+const UserDemandes = React.lazy(() => import('./pages/user-demandes'));
 const AdminDashboard = React.lazy(() => import('./pages/admin-dashboard'));
 const AdminModeration = React.lazy(() => import('./pages/admin-moderation'));
 const CreateListing = React.lazy(() => import('./pages/create-listing'));
@@ -28,6 +35,7 @@ const AdminReservationManagement = React.lazy(() => import('./pages/admin-reserv
 const AdminEmailTracking = React.lazy(() => import('./pages/admin-email-tracking'));
 const AdminTaskTracking = React.lazy(() => import('./pages/admin-task-tracking'));
 const AdminCategories = React.lazy(() => import('./pages/admin-categories'));
+const AdminObjectImageLibrary = React.lazy(() => import('./pages/admin-object-image-library'));
 const AdminEmailTemplates = React.lazy(() => import('./pages/admin-email-templates'));
 const AdminFooterEditor = React.lazy(() => import('./pages/admin-footer-editor'));
 const AdminLegalPages = React.lazy(() => import('./pages/admin-legal-pages'));
@@ -44,7 +52,6 @@ const CGU = React.lazy(() => import('./pages/legal/cgu'));
 const CGV = React.lazy(() => import('./pages/legal/cgv'));
 const PolitiqueConfidentialite = React.lazy(() => import('./pages/legal/politique-confidentialite'));
 const PolitiqueCookies = React.lazy(() => import('./pages/legal/politique-cookies'));
-const StripeConnectOnboarding = React.lazy(() => import('./pages/stripe-connect-onboarding'));
 const ReservationManagementDashboard = React.lazy(() => import('./pages/reservation-management-dashboard'));
 const DocumentVerificationAdmin = React.lazy(() => import('./pages/document-verification-admin'));
 const CreateDemandRequest = React.lazy(() => import('./pages/create-demand-request'));
@@ -52,10 +59,9 @@ const PublicDemandsMarketplace = React.lazy(() => import('./pages/public-demands
 const AdminMatching = React.lazy(() => import('./pages/admin-matching'));
 const ContractGenerationPreview = React.lazy(() => import('./pages/contract-generation-preview'));
 const AdminAutomationManagement = React.lazy(() => import('./pages/admin-automation-management'));
-const GeolocationSearchEnhancement = React.lazy(() => import('pages/geolocation-search-enhancement'));
+const GeolocationSearchEnhancement = React.lazy(() => import('./pages/geolocation-search-enhancement'));
 const UserAnnonces = React.lazy(() => import('./pages/user-annonces'));
 const TesterAuthenticationContextSetup = React.lazy(() => import('./pages/tester-authentication-context-setup'));
-const TestModeInterfaceWithScenarioPanel = React.lazy(() => import('./pages/test-mode-interface-with-scenario-panel'));
 const AdminTestResultsDashboard = React.lazy(() => import('./pages/admin-test-results-dashboard'));
 const FAQPage = React.lazy(() => import('./pages/faq'));
 const InsuranceCoverage = React.lazy(() => import('./pages/insurance-coverage'));
@@ -79,6 +85,84 @@ const LegacyBookingRequestRedirect = () => {
   return <Navigate to={`/demande-reservation/${id}`} replace />;
 };
 
+const buildRedirectPath = (pathname, keys = [], sourceParams = new URLSearchParams()) => {
+  const nextParams = new URLSearchParams();
+
+  keys?.forEach((key) => {
+    const value = sourceParams?.get(key);
+    if (value) {
+      nextParams?.set(key, value);
+    }
+  });
+
+  const queryString = nextParams?.toString();
+  return queryString ? `${pathname}?${queryString}` : pathname;
+};
+
+const LegacyUserDashboardRedirect = () => {
+  const location = useLocation();
+  const searchParams = new URLSearchParams(location?.search || '');
+  const requestedTab = String(searchParams?.get('tab') || '')?.trim()?.toLowerCase();
+  const requestedAccountPath = resolveLegacyAccountTabPath(requestedTab);
+
+  if (requestedTab === 'listings') {
+    return <Navigate to="/mes-annonces" replace />;
+  }
+
+  if (requestedTab === 'demandes') {
+    return <Navigate to="/mes-annonces#demandes" replace />;
+  }
+
+  if (requestedTab === 'messages') {
+    return <Navigate to={buildRedirectPath('/messages', ['conversation'], searchParams)} replace />;
+  }
+
+  if (requestedAccountPath) {
+    const nextParams = new URLSearchParams(searchParams);
+
+    nextParams.delete('tab');
+    if (requestedAccountPath !== ACCOUNT_SECTION_PATHS.payouts) {
+      nextParams.delete('activation');
+    }
+
+    const nextSearch = nextParams?.toString();
+
+    return (
+      <Navigate
+        to={{
+          pathname: requestedAccountPath,
+          search: nextSearch ? `?${nextSearch}` : ''
+        }}
+        replace
+      />
+    );
+  }
+
+  return (
+    <Navigate
+      to={buildRedirectPath('/mes-reservations', ['conversation', 'annonce', 'other'], searchParams)}
+      replace
+    />
+  );
+};
+
+const LegacyPayoutSettingsRedirect = () => {
+  const location = useLocation();
+  const nextParams = new URLSearchParams(location?.search || '');
+  nextParams.delete('tab');
+  const nextSearch = nextParams?.toString();
+
+  return (
+    <Navigate
+      to={{
+        pathname: ACCOUNT_SECTION_PATHS.payouts,
+        search: nextSearch ? `?${nextSearch}` : ''
+      }}
+      replace
+    />
+  );
+};
+
 const AdminGuard = ({ children }) => {
   const location = useLocation();
   const { user, userProfile, loading, profileLoading } = useAuth();
@@ -89,7 +173,7 @@ const AdminGuard = ({ children }) => {
   }
 
   if (!user) {
-    return <Navigate to="/authentification" replace state={{ from: requestedPath }} />;
+    return <Navigate to="/admin" replace state={{ from: requestedPath }} />;
   }
 
   if (userProfile?.is_admin !== true) {
@@ -103,6 +187,18 @@ const AdminGuard = ({ children }) => {
   return children;
 };
 
+const withTestMode = (element) => (
+  <TestModeLayout>
+    {element}
+  </TestModeLayout>
+);
+
+const withRouteVerification = (routeId, element) => (
+  <RouteVerificationMarker routeId={routeId}>
+    {element}
+  </RouteVerificationMarker>
+);
+
 const Routes = () => {
   return (
     <BrowserRouter>
@@ -113,61 +209,70 @@ const Routes = () => {
       <Suspense fallback={<RouteLoadingScreen />}>
       <RouterRoutes>
         {/* Define your route here */}
-        <Route path="/" element={<HomeSearch />} />
-        <Route path="/authentification" element={<Authentication />} />
-        <Route path="/auth/retour" element={<AuthCallback />} />
-        <Route path="/reinitialiser-mot-de-passe" element={<ResetPassword />} />
-        <Route path="/accueil-recherche" element={<HomeSearch />} />
-        <Route path="/profil-documents-utilisateur" element={<UserProfileDocuments />} />
-        <Route path="/location/:slug/:id" element={<EquipmentDetail />} />
-        <Route path="/detail-matériel/:id" element={<EquipmentDetail />} />
-        <Route path="/demande-reservation/:id" element={<BookingRequest />} />
-        <Route path="/traitement-paiement" element={<PaymentProcessing />} />
-        <Route path="/verification-identite-location" element={<VerificationIdentiteLocation />} />
-        <Route path="/tableau-bord-utilisateur" element={<UserDashboard />} />
-        <Route path="/mes-annonces" element={<UserAnnonces />} />
-        <Route path="/mes-reservations" element={<ReservationManagementDashboard />} />
-        <Route path="/administration-tableau-bord" element={<AdminGuard><AdminDashboard /></AdminGuard>} />
-        <Route path="/administration-resultats-essais" element={<AdminGuard><AdminTestResultsDashboard /></AdminGuard>} />
-        <Route path="/administration-moderation" element={<AdminGuard><AdminModeration /></AdminGuard>} />
-        <Route path="/administration-gestion-reservations" element={<AdminGuard><AdminReservationManagement /></AdminGuard>} />
-        <Route path="/administration-gestion-utilisateurs" element={<AdminGuard><AdminUserManagement /></AdminGuard>} />
-        <Route path="/administration-suivi-courriels" element={<AdminGuard><AdminEmailTracking /></AdminGuard>} />
-        <Route path="/administration-suivi-taches" element={<AdminGuard><AdminTaskTracking /></AdminGuard>} />
-        <Route path="/administration-categories" element={<AdminGuard><AdminCategories /></AdminGuard>} />
-        <Route path="/administration-modeles-courriels" element={<AdminGuard><AdminEmailTemplates /></AdminGuard>} />
-        <Route path="/administration-editeur-pied-page" element={<AdminGuard><AdminFooterEditor /></AdminGuard>} />
-        <Route path="/administration-pages-legales" element={<AdminGuard><AdminLegalPages /></AdminGuard>} />
-        <Route path="/administration-foire-questions" element={<AdminGuard><AdminFAQ /></AdminGuard>} />
-        <Route path="/administration-contrat-location" element={<AdminGuard><AdminRentalContract /></AdminGuard>} />
-        <Route path="/administration-retours" element={<AdminGuard><AdminRetours /></AdminGuard>} />
-        <Route path="/administration-notifications" element={<AdminGuard><AdminNotifications /></AdminGuard>} />
-        <Route path="/administration-moderation-demandes" element={<AdminGuard><AdminModerateRequests /></AdminGuard>} />
-        <Route path="/administration-litiges-etat-des-lieux" element={<AdminGuard><AdminInspectionDisputes /></AdminGuard>} />
-        <Route path="/administration-signalements" element={<AdminGuard><AdminSignalements /></AdminGuard>} />
-        <Route path="/administration-vérification-documents" element={<AdminGuard><DocumentVerificationAdmin /></AdminGuard>} />
-        <Route path="/administration-appariement" element={<AdminGuard><AdminMatching /></AdminGuard>} />
-        <Route path="/apercu-generation-contrat" element={<ContractGenerationPreview />} />
-        <Route path="/administration-gestion-automatisations" element={<AdminGuard><AdminAutomationManagement /></AdminGuard>} />
-        <Route path="/messages" element={<Navigate to="/tableau-bord-utilisateur?tab=messages" replace />} />
-        <Route path="/creer-annonce" element={<CreateListing />} />
-        <Route path="/creer-demande" element={<CreateDemandRequest />} />
-        <Route path="/demandes-publiques" element={<PublicDemandsMarketplace />} />
-        <Route path="/photos-d-tat-des-lieux/:reservationId" element={<PhotosEtatDesLieux />} />
-        <Route path="/couverture-assurance" element={<InsuranceCoverage />} />
-        <Route path="/centre-notifications" element={<NotificationsCenter />} />
-        <Route path="/foire-questions" element={<FAQPage />} />
-        <Route path="/legal/mentions-legales" element={<MentionsLegales />} />
-        <Route path="/legal/cgu" element={<CGU />} />
-        <Route path="/legal/cgv" element={<CGV />} />
-        <Route path="/legal/politique-confidentialite" element={<PolitiqueConfidentialite />} />
-        <Route path="/legal/politique-temoins-connexion" element={<PolitiqueCookies />} />
-        <Route path="/legal/connexion-stripe" element={<StripeConnectOnboarding />} />
+        <Route path="/" element={withRouteVerification("home-search", withTestMode(<HomeSearch />))} />
+        <Route path="/authentification" element={withRouteVerification("authentication", <Authentication />)} />
+        <Route path="/auth/retour" element={withRouteVerification("auth-callback", <AuthCallback />)} />
+        <Route path="/reinitialiser-mot-de-passe" element={withRouteVerification("reset-password", <ResetPassword />)} />
+        <Route path="/accueil-recherche" element={withRouteVerification("home-search", withTestMode(<HomeSearch />))} />
+        <Route path={ACCOUNT_SECTION_PATHS.profile} element={withRouteVerification("account-profile", withTestMode(<UserProfileDocuments section="profile" />))} />
+        <Route path={ACCOUNT_SECTION_PATHS.activity} element={withRouteVerification("account-activity", withTestMode(<UserProfileDocuments section="activity" />))} />
+        <Route path={ACCOUNT_SECTION_PATHS.documents} element={withRouteVerification("account-documents", withTestMode(<UserProfileDocuments section="documents" />))} />
+        <Route path={ACCOUNT_SECTION_PATHS.settings} element={withRouteVerification("account-settings", withTestMode(<UserProfileDocuments section="settings" />))} />
+        <Route path={ACCOUNT_SECTION_PATHS.payouts} element={withRouteVerification("account-payouts", withTestMode(<UserProfileDocuments section="payouts" />))} />
+        <Route path={ACCOUNT_SECTION_PATHS.logout} element={withRouteVerification("account-logout", withTestMode(<UserProfileDocuments section="logout" />))} />
+        <Route path={ACCOUNT_SECTION_PATHS.report} element={withRouteVerification("account-report", withTestMode(<UserProfileDocuments section="report" />))} />
+        <Route path="/location/:slug/:id" element={withRouteVerification("equipment-detail", withTestMode(<EquipmentDetail />))} />
+        <Route path="/detail-matériel/:id" element={withRouteVerification("equipment-detail", withTestMode(<EquipmentDetail />))} />
+        <Route path="/demande-reservation/:id" element={withRouteVerification("booking-request", withTestMode(<BookingRequest />))} />
+        <Route path="/traitement-paiement" element={withRouteVerification("payment-processing", withTestMode(<PaymentProcessing />))} />
+        <Route path="/verification-identite-location" element={withRouteVerification("identity-verification-rental", withTestMode(<VerificationIdentiteLocation />))} />
+        <Route path="/tableau-bord-utilisateur" element={<LegacyUserDashboardRedirect />} />
+        <Route path="/mes-annonces" element={withRouteVerification("user-listings", withTestMode(<UserAnnonces />))} />
+        <Route path="/mes-demandes" element={withRouteVerification("user-demands", withTestMode(<UserDemandes />))} />
+        <Route path="/mes-reservations" element={withRouteVerification("reservation-management", withTestMode(<ReservationManagementDashboard />))} />
+        <Route path="/administration-tableau-bord" element={withRouteVerification("admin-dashboard", <AdminGuard><AdminDashboard /></AdminGuard>)} />
+        <Route path="/administration-resultats-essais" element={withRouteVerification("admin-test-results", <AdminGuard><AdminTestResultsDashboard /></AdminGuard>)} />
+        <Route path="/administration-moderation" element={withRouteVerification("admin-moderation", <AdminGuard><AdminModeration /></AdminGuard>)} />
+        <Route path="/administration-gestion-reservations" element={withRouteVerification("admin-reservation-management", <AdminGuard><AdminReservationManagement /></AdminGuard>)} />
+        <Route path="/administration-gestion-utilisateurs" element={withRouteVerification("admin-user-management", <AdminGuard><AdminUserManagement /></AdminGuard>)} />
+        <Route path="/administration-suivi-courriels" element={withRouteVerification("admin-email-tracking", <AdminGuard><AdminEmailTracking /></AdminGuard>)} />
+        <Route path="/administration-suivi-taches" element={withRouteVerification("admin-task-tracking", <AdminGuard><AdminTaskTracking /></AdminGuard>)} />
+        <Route path="/administration-categories" element={withRouteVerification("admin-categories", <AdminGuard><AdminCategories /></AdminGuard>)} />
+        <Route path="/administration-bibliotheque-images-demandes" element={withRouteVerification("admin-object-image-library", <AdminGuard><AdminObjectImageLibrary /></AdminGuard>)} />
+        <Route path="/administration-modeles-courriels" element={withRouteVerification("admin-email-templates", <AdminGuard><AdminEmailTemplates /></AdminGuard>)} />
+        <Route path="/administration-editeur-pied-page" element={withRouteVerification("admin-footer-editor", <AdminGuard><AdminFooterEditor /></AdminGuard>)} />
+        <Route path="/administration-pages-legales" element={withRouteVerification("admin-legal-pages", <AdminGuard><AdminLegalPages /></AdminGuard>)} />
+        <Route path="/administration-foire-questions" element={withRouteVerification("admin-faq", <AdminGuard><AdminFAQ /></AdminGuard>)} />
+        <Route path="/administration-contrat-location" element={withRouteVerification("admin-rental-contract", <AdminGuard><AdminRentalContract /></AdminGuard>)} />
+        <Route path="/administration-retours" element={withRouteVerification("admin-feedbacks", <AdminGuard><AdminRetours /></AdminGuard>)} />
+        <Route path="/administration-notifications" element={withRouteVerification("admin-notifications", <AdminGuard><AdminNotifications /></AdminGuard>)} />
+        <Route path="/administration-moderation-demandes" element={withRouteVerification("admin-moderate-requests", <AdminGuard><AdminModerateRequests /></AdminGuard>)} />
+        <Route path="/administration-litiges-etat-des-lieux" element={withRouteVerification("admin-inspection-disputes", <AdminGuard><AdminInspectionDisputes /></AdminGuard>)} />
+        <Route path="/administration-signalements" element={withRouteVerification("admin-signalements", <AdminGuard><AdminSignalements /></AdminGuard>)} />
+        <Route path="/administration-vérification-documents" element={withRouteVerification("admin-document-verification", <AdminGuard><DocumentVerificationAdmin /></AdminGuard>)} />
+        <Route path="/administration-verification-documents" element={withRouteVerification("admin-document-verification", <AdminGuard><DocumentVerificationAdmin /></AdminGuard>)} />
+        <Route path="/administration-appariement" element={withRouteVerification("admin-matching", <AdminGuard><AdminMatching /></AdminGuard>)} />
+        <Route path="/apercu-generation-contrat" element={withRouteVerification("contract-generation-preview", <ContractGenerationPreview />)} />
+        <Route path="/administration-gestion-automatisations" element={withRouteVerification("admin-automation-management", <AdminGuard><AdminAutomationManagement /></AdminGuard>)} />
+        <Route path="/messages" element={withRouteVerification("messages", withTestMode(<Messages />))} />
+        <Route path="/creer-annonce" element={withRouteVerification("create-listing", withTestMode(<CreateListing />))} />
+        <Route path="/creer-demande" element={withRouteVerification("create-demand-request", withTestMode(<CreateDemandRequest />))} />
+        <Route path="/demandes-publiques" element={withRouteVerification("public-demands-marketplace", withTestMode(<PublicDemandsMarketplace />))} />
+        <Route path="/photos-d-tat-des-lieux/:reservationId" element={withRouteVerification("photos-inspection", withTestMode(<PhotosEtatDesLieux />))} />
+        <Route path="/couverture-assurance" element={withRouteVerification("insurance-coverage", withTestMode(<InsuranceCoverage />))} />
+        <Route path="/centre-notifications" element={withRouteVerification("notifications-center", withTestMode(<NotificationsCenter />))} />
+        <Route path="/foire-questions" element={withRouteVerification("faq", withTestMode(<FAQPage />))} />
+        <Route path="/legal/mentions-legales" element={withRouteVerification("legal-mentions", <MentionsLegales />)} />
+        <Route path="/legal/cgu" element={withRouteVerification("legal-cgu", <CGU />)} />
+        <Route path="/legal/cgv" element={withRouteVerification("legal-cgv", <CGV />)} />
+        <Route path="/legal/politique-confidentialite" element={withRouteVerification("legal-privacy", <PolitiqueConfidentialite />)} />
+        <Route path="/legal/politique-temoins-connexion" element={withRouteVerification("legal-cookies", <PolitiqueCookies />)} />
+        <Route path="/coordonnees-versement" element={<LegacyPayoutSettingsRedirect />} />
         <Route path="/tableau-gestion-reservations" element={<Navigate to="/mes-reservations" replace />} />
-        <Route path="/parametres" element={<Navigate to="/tableau-bord-utilisateur" replace />} />
-        <Route path="/amelioration-recherche-geolocalisee" element={<GeolocationSearchEnhancement />} />
-        <Route path="/participant-configuration-contexte-authentification" element={<TesterAuthenticationContextSetup />} />
-        <Route path="/interface-mode-essai-panneau-scenario" element={<TestModeInterfaceWithScenarioPanel />} />
+        <Route path="/parametres" element={<Navigate to={ACCOUNT_SECTION_PATHS.settings} replace />} />
+        <Route path="/amelioration-recherche-geolocalisee" element={withRouteVerification("geolocation-search", withTestMode(<GeolocationSearchEnhancement />))} />
+        <Route path="/participant-configuration-contexte-authentification" element={withRouteVerification("tester-authentication-context-setup", <TesterAuthenticationContextSetup />)} />
+        <Route path="/interface-mode-essai-panneau-scenario" element={<Navigate to="/participant-configuration-contexte-authentification" replace />} />
 
         <Route path="/authentication" element={<Navigate to="/authentification" replace />} />
         <Route path="/auth/callback" element={<Navigate to="/auth/retour" replace />} />
@@ -178,8 +283,8 @@ const Routes = () => {
         <Route path="/booking-request/:id" element={<LegacyBookingRequestRedirect />} />
         <Route path="/payment-processing" element={<Navigate to="/traitement-paiement" replace />} />
         <Route path="/identity-vérification" element={<Navigate to="/verification-identite-location" replace />} />
-        <Route path="/user-dashboard" element={<Navigate to="/tableau-bord-utilisateur" replace />} />
-        <Route path="/admin" element={<AdminAccess />} />
+        <Route path="/user-dashboard" element={<LegacyUserDashboardRedirect />} />
+        <Route path="/admin" element={withRouteVerification("admin-access", <AdminAccess />)} />
         <Route path="/admin-dashboard" element={<Navigate to="/administration-tableau-bord" replace />} />
         <Route path="/admin-test-results-dashboard" element={<Navigate to="/administration-resultats-essais" replace />} />
         <Route path="/admin-moderation" element={<Navigate to="/administration-moderation" replace />} />
@@ -188,6 +293,7 @@ const Routes = () => {
         <Route path="/admin-email-tracking" element={<Navigate to="/administration-suivi-courriels" replace />} />
         <Route path="/admin-task-tracking" element={<Navigate to="/administration-suivi-taches" replace />} />
         <Route path="/admin-categories" element={<Navigate to="/administration-categories" replace />} />
+        <Route path="/admin-object-image-library" element={<Navigate to="/administration-bibliotheque-images-demandes" replace />} />
         <Route path="/admin-email-templates" element={<Navigate to="/administration-modeles-courriels" replace />} />
         <Route path="/admin-footer-editor" element={<Navigate to="/administration-editeur-pied-page" replace />} />
         <Route path="/admin-legal-pages" element={<Navigate to="/administration-pages-legales" replace />} />
@@ -195,7 +301,7 @@ const Routes = () => {
         <Route path="/admin-rental-contract" element={<Navigate to="/administration-contrat-location" replace />} />
         <Route path="/admin-feedbacks" element={<Navigate to="/administration-retours" replace />} />
         <Route path="/admin-notifications" element={<Navigate to="/administration-notifications" replace />} />
-        <Route path="/admin-moderate-requests" element={<Navigate to="/administration-moderation-demandes" replace />} />
+        <Route path="/admin-moderate-requests" element={<Navigate to="/administration-moderation" replace />} />
         <Route path="/admin-inspection-disputes" element={<Navigate to="/administration-litiges-etat-des-lieux" replace />} />
         <Route path="/admin-signalements" element={<Navigate to="/administration-signalements" replace />} />
         <Route path="/admin-document-vérification" element={<Navigate to="/administration-vérification-documents" replace />} />
@@ -209,16 +315,17 @@ const Routes = () => {
         <Route path="/notifications-center" element={<Navigate to="/centre-notifications" replace />} />
         <Route path="/notifications" element={<Navigate to="/centre-notifications" replace />} />
         <Route path="/faq" element={<Navigate to="/foire-questions" replace />} />
-        <Route path="/settings" element={<Navigate to="/parametres" replace />} />
-        <Route path="/stripe-connect-onboarding" element={<Navigate to="/legal/connexion-stripe" replace />} />
+        <Route path="/settings" element={<Navigate to={ACCOUNT_SECTION_PATHS.settings} replace />} />
+        <Route path="/stripe-connect-onboarding" element={<Navigate to="/coordonnees-versement" replace />} />
         <Route path="/mentions-legales" element={<Navigate to="/legal/mentions-legales" replace />} />
         <Route path="/cgu" element={<Navigate to="/legal/cgu" replace />} />
         <Route path="/cgv" element={<Navigate to="/legal/cgv" replace />} />
         <Route path="/politique-confidentialite" element={<Navigate to="/legal/politique-confidentialite" replace />} />
         <Route path="/politique-cookies" element={<Navigate to="/legal/politique-temoins-connexion" replace />} />
         <Route path="/legal/politique-cookies" element={<Navigate to="/legal/politique-temoins-connexion" replace />} />
-        <Route path="/legal/integration-stripe-connect" element={<Navigate to="/legal/connexion-stripe" replace />} />
-        <Route path="/legal/stripe-connect-onboarding" element={<Navigate to="/legal/connexion-stripe" replace />} />
+        <Route path="/legal/connexion-stripe" element={<Navigate to="/coordonnees-versement" replace />} />
+        <Route path="/legal/integration-stripe-connect" element={<Navigate to="/coordonnees-versement" replace />} />
+        <Route path="/legal/stripe-connect-onboarding" element={<Navigate to="/coordonnees-versement" replace />} />
         <Route path="/reservation-management-dashboard" element={<Navigate to="/mes-reservations" replace />} />
         <Route path="/geolocation-search-enhancement" element={<Navigate to="/amelioration-recherche-geolocalisee" replace />} />
         <Route path="/tester-authentication-context-setup" element={<Navigate to="/participant-configuration-contexte-authentification" replace />} />

@@ -50,7 +50,7 @@ const DocumentDetailModal = ({
   const canReject = document?.status !== 'rejected';
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/60 px-4 py-6">
+    <div className="fixed inset-0 z-[1060] flex items-center justify-center bg-slate-950/60 px-4 py-6">
       <div className="max-h-[92vh] w-full max-w-5xl overflow-hidden rounded-3xl bg-white shadow-2xl">
         <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-6 py-5">
           <div>

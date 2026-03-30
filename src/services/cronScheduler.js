@@ -38,6 +38,12 @@ class CronScheduler {
       automationService?.checkMissingDocuments();
     }, 6 * 60 * 60 * 1000);
 
+    // Annuler les reservations payees non demarrees dont la date de fin est depassee - toutes les 6 heures
+    this.intervals.overduePaidReservations = setInterval(() => {
+      console.log('Running: cancel_overdue_paid_reservations');
+      automationService?.cancelOverduePaidReservations();
+    }, 6 * 60 * 60 * 1000);
+
     // Annuler les réservations impayées - toutes les 30 minutes
     this.intervals.cancelUnpaid = setInterval(() => {
       console.log('Running: cancel_unpaid_reservations');

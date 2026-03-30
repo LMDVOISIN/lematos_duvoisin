@@ -115,7 +115,7 @@ const profileService = {
   updateProfileFields: async (userId, fields) => {
     const allowedFields = [
       'pseudo', 'email', 'phone', 'city', 'address', 'postal_code',
-      'first_name', 'last_name',
+      'first_name', 'last_name', 'birth_date',
       'avatar_url', 'stripe_account_id', 'stripe_customer_id', 'updated_at'
     ];
 
@@ -170,7 +170,25 @@ const profileService = {
         return { data: null, error };
       }
 
-      return { data, error: null };
+      let ownerPayoutSync = null;
+      let ownerPayoutSyncError = null;
+
+      if (stripeAccountId) {
+        const { data: syncData, error: syncError } = await supabase.functions.invoke('sync-owner-payouts', {
+          body: {
+            limit: 100
+          }
+        });
+
+        if (syncError) {
+          ownerPayoutSyncError = syncError;
+          console.warn('Sync owner payouts warning after payout account update:', syncError?.message || syncError);
+        } else {
+          ownerPayoutSync = syncData || null;
+        }
+      }
+
+      return { data, error: null, ownerPayoutSync, ownerPayoutSyncError };
     } catch (error) {
       console.error('Update Stripe account error:', error);
       throw error;

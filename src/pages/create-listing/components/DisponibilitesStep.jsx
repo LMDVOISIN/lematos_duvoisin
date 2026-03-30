@@ -254,7 +254,7 @@ const DisponibilitesStep = ({ formData, updateFormData, errors }) => {
 
   return (
     <div className="space-y-6">
-      <div>
+      <div className="hidden">
         <h2 className="text-xl font-semibold text-foreground mb-2">Disponibilités</h2>
         <p className="text-sm text-muted-foreground">Indiquez les dates où votre matériel n'est pas disponible</p>
       </div>
@@ -327,6 +327,10 @@ const DisponibilitesStep = ({ formData, updateFormData, errors }) => {
               <span>Indisponible</span>
             </div>
           </div>
+
+          <p className="text-sm text-muted-foreground">
+            Utilisez ce calendrier pour bloquer les jours où vous souhaitez garder l'objet pour votre usage personnel. Les dates bloquées ne pourront pas être réservées.
+          </p>
         </div>
 
         <div className="space-y-6 bg-surface rounded-lg border border-border p-6">
@@ -483,7 +487,22 @@ const DisponibilitesStep = ({ formData, updateFormData, errors }) => {
         />
       </div>
 
-      <div className="bg-[#17a2b8]/10 border border-[#17a2b8]/20 rounded-lg p-4">
+      <div className="grid gap-3 md:grid-cols-3">
+        {[
+          'Cliquez sur une date pour la bloquer',
+          'Vous pouvez ajuster ce calendrier à tout moment',
+          'Les réservations confirmées bloquent déjà les dates'
+        ]?.map((item) => (
+          <div
+            key={item}
+            className="rounded-2xl border border-[#17a2b8]/15 bg-[#ecfeff] px-4 py-3 text-sm font-medium text-[#0f4d7a]"
+          >
+            {item}
+          </div>
+        ))}
+      </div>
+
+      <div className="hidden bg-[#17a2b8]/10 border border-[#17a2b8]/20 rounded-lg p-4">
         <div className="flex gap-2">
           <Icon name="Info" size={18} className="text-[#17a2b8] flex-shrink-0 mt-0.5" />
           <div>

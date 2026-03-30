@@ -3,7 +3,8 @@ import { sendEmail } from './emailService';
 import { construireSlugAnnonce, construireUrlAnnonce, construireUrlAnnonceAbsolue } from '../utils/listingUrl';
 import avisService from './avisService';
 import notificationService from './notificationService';
-import { buildPromotionSharePayload, getSocialPromotionNetworks } from './socialPromotionService';
+import userTestingService from './userTestingService';
+import { isTestModeSessionEnabled } from '../utils/testModeSession';
 
 /**
  * Service annonce
@@ -32,6 +33,157 @@ const hasValidCoordinates = (latitude, longitude) => {
   if (lat === null || lng === null) return false;
   return lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
 };
+
+const normalizeMirrorListingEntry = (source = {}, fallbackOwnerEmail = '') => {
+  const listingTitle = String(
+    source?.listingTitle
+    || source?.titre
+    || source?.title
+    || 'Annonce creee pendant le test'
+  ).trim();
+  const listingId = String(source?.listingId || source?.id || '').trim();
+  const listingSlug = String(source?.listingSlug || source?.slug || '').trim();
+  const listingPath = String(
+    source?.listingPath
+    || (listingId ? `/location/${listingSlug || 'annonce'}/${listingId}` : '')
+  ).trim();
+  const ownerEmail = String(source?.ownerEmail || fallbackOwnerEmail || '').trim();
+  const searchHint = String(source?.searchHint || listingTitle).trim();
+
+  if (!listingTitle && !listingId && !listingPath) return null;
+
+  return {
+    listingId,
+    listingSlug,
+    listingTitle,
+    listingPath,
+    ownerEmail,
+    searchHint,
+    actionLabel: 'Ouvrir cette annonce'
+  };
+};
+
+const readExistingMirrorListings = (existingContext = {}, ownerEmail = '') => {
+  const nextListings = Array.isArray(existingContext?.listings)
+    ? existingContext.listings
+        .map((listing) => normalizeMirrorListingEntry(listing, ownerEmail))
+        .filter(Boolean)
+    : [];
+
+  if (nextListings.length > 0) {
+    return nextListings;
+  }
+
+  const fallbackListing = normalizeMirrorListingEntry(
+    {
+      listingId: existingContext?.listingId,
+      listingSlug: existingContext?.listingSlug,
+      listingTitle: existingContext?.listingTitle || existingContext?.title,
+      listingPath: existingContext?.listingPath,
+      ownerEmail: existingContext?.ownerEmail,
+      searchHint: existingContext?.searchHint
+    },
+    ownerEmail
+  );
+
+  return fallbackListing ? [fallbackListing] : [];
+};
+
+const dedupeMirrorListings = (entries = []) => {
+  const mergedListings = [...(entries || [])].filter(Boolean);
+  const seenListings = new Set();
+  const listings = [];
+
+  mergedListings.forEach((listing) => {
+    const key = String(
+      listing?.listingId
+      || listing?.listingPath
+      || listing?.listingTitle
+      || ''
+    ).trim().toLowerCase();
+
+    if (!key || seenListings.has(key)) return;
+    seenListings.add(key);
+    listings.push(listing);
+  });
+
+  return listings;
+};
+
+const mergeMirrorListings = (
+  entries = [],
+  ownerEmail = '',
+  existingContext = {},
+  options = {}
+) => {
+  const latestListings = (entries || [])
+    .map((entry) => normalizeMirrorListingEntry(entry, ownerEmail))
+    .filter(Boolean);
+  const previousListings = readExistingMirrorListings(existingContext, ownerEmail);
+  const replaceExisting = Boolean(options?.replaceExisting);
+
+  if (replaceExisting && latestListings.length > 0) {
+    return dedupeMirrorListings(latestListings);
+  }
+
+  return dedupeMirrorListings([...latestListings, ...previousListings]);
+};
+
+const isAnnoncePublishedForTest = (annonce = {}) => {
+  const statut = String(annonce?.statut || '')?.toLowerCase();
+  const isPublished = statut === 'publiee' || statut === 'published' || Boolean(annonce?.published);
+  const isTemporarilyDisabled = Boolean(
+    annonce?.temporarily_disabled ?? annonce?.temporarilyDisabled
+  );
+
+  return isPublished && !isTemporarilyDisabled;
+};
+
+const buildMirrorListingsContext = (
+  entries = [],
+  ownerEmail = '',
+  existingContext = {},
+  options = {}
+) => {
+  const listings = mergeMirrorListings(entries, ownerEmail, existingContext, options);
+  const primaryListing = listings[0] || null;
+  const primaryTitle = String(
+    primaryListing?.listingTitle || 'Annonce du propriétaire testeur'
+  ).trim();
+
+  if (listings.length === 0) {
+    return {
+      kind: 'owner_scope',
+      ownerEmail: String(ownerEmail || '').trim(),
+      title: 'Annonces du propriétaire testeur',
+      searchHint: '',
+      actionLabel: '',
+      listings: [],
+      messageForMirror:
+        "Le système attend encore au moins une annonce publiée du propriétaire testeur."
+    };
+  }
+
+  return {
+    kind: 'listing_created',
+    listingId: String(primaryListing?.listingId || '').trim(),
+    listingSlug: String(primaryListing?.listingSlug || '').trim(),
+    listingTitle: primaryTitle,
+    listingPath: String(primaryListing?.listingPath || '').trim(),
+    title: primaryTitle,
+    ownerEmail: String(primaryListing?.ownerEmail || ownerEmail || '').trim(),
+    searchHint: String(primaryListing?.searchHint || primaryTitle).trim(),
+    actionLabel: primaryListing?.listingPath ? 'Ouvrir cette annonce' : '',
+    listings,
+    messageForMirror:
+      listings.length > 1
+        ? 'Choisissez une annonce du propriétaire testeur dans cette liste pour faire la réservation.'
+        : `Choisissez l'annonce "${primaryTitle}" pour faire la réservation.`
+  };
+};
+
+const buildMirrorListingContext = (annonce = {}, ownerEmail = '', existingContext = {}) =>
+  buildMirrorListingsContext([annonce], ownerEmail, existingContext);
 
 const buildAnnonceGeocodeQueryCandidates = (payload = {}) => {
   const address = toTrimmedText(payload?.address || payload?.adresse);
@@ -179,7 +331,7 @@ function extractMissingColumnName(error) {
   const message = String(error?.message || '');
   const patterns = [
     /column\s+"?([a-zA-Z0-9_]+)"?\s+does not exist/i,
-    /colonne\s+"?([a-zA-Z0-9_]+)"?\s+n['â€™]existe pas/i,
+    /colonne\s+"?([a-zA-Z0-9_]+)"?\s+n['’]existe pas/i,
     /could not find the\s+['"]?([a-zA-Z0-9_]+)['"]?\s+column/i,
   ];
 
@@ -339,7 +491,7 @@ async function sendAnnonceSubmissionEmails({ annonce, ownerId }) {
           annonce_title: annonce?.titre,
           owner_name: ownerProfile?.pseudo || 'Utilisateur',
           owner_email: ownerProfile?.email,
-          category: annonce?.categorie || 'Non specifiee',
+          category: annonce?.categorie || 'Non spécifiée',
           price: annonce?.prix_jour || '0',
           admin_url: `${window.location?.origin}/administration-moderation`
         }
@@ -570,6 +722,28 @@ const annonceService = {
         return { data: null, error };
       }
 
+      if (isTestModeSessionEnabled() && user?.email) {
+        try {
+          const { data: tester } = await userTestingService?.checkIfTester(user?.email);
+          if (tester?.id) {
+            const { data: activeTestSession } = await userTestingService?.getCurrentSession(tester?.id);
+            if (activeTestSession?.id) {
+              await annonceService?.registerAnnonceForReferenceTest({
+                sessionId: activeTestSession?.id,
+                annonce: data,
+                ownerEmail: user?.email,
+                existingContext:
+                  activeTestSession?.runtimeState?.referenceContext
+                  || activeTestSession?.runtimeState?.reference_context
+                  || {}
+              });
+            }
+          }
+        } catch (testContextError) {
+          console.warn('Contexte miroir annonce non enregistre:', testContextError?.message || testContextError);
+        }
+      }
+
       // Envoyer un e-mail au propriétaire : annonce créée
       const { data: ownerProfile } = await supabase?.from('profiles')?.select('pseudo, email')?.eq('id', user?.id)?.single();
       if (ownerProfile?.email) {
@@ -613,7 +787,7 @@ const annonceService = {
               annonce_title: data?.titre,
               owner_name: ownerProfile?.pseudo || 'Utilisateur',
               owner_email: ownerProfile?.email,
-              category: data?.categorie || 'Non specifiee',
+              category: data?.categorie || 'Non spécifiée',
               price: data?.prix_jour || '0',
               admin_url: `${window.location?.origin}/administration-moderation`
             }
@@ -690,7 +864,7 @@ const annonceService = {
           data: null,
           error: {
             code: 'ANNONCE_UPDATE_NOT_FOUND',
-            message: "Annonce introuvable ou non autorisée pour la mise ? jour."
+            message: "Annonce introuvable ou non autorisée pour la mise à jour."
           }
         };
       }
@@ -822,17 +996,7 @@ const annonceService = {
 
       if (ownerProfile?.email) {
         // Envoyer l'e-mail approprié selon le statut
-        if (newStatus === 'publiee') {
-          await sendEmail({
-            to: ownerProfile?.email,
-            templateKey: 'annonce_published_owner',
-            variables: {
-              owner_name: ownerProfile?.pseudo || 'Utilisateur',
-              annonce_title: data?.titre,
-              annonce_url: construireUrlAnnonceAbsolue(data, window.location?.origin)
-            }
-          });
-        } else if (newStatus === 'refusee') {
+        if (newStatus === 'refusee') {
           await sendEmail({
             to: ownerProfile?.email,
             templateKey: 'annonce_rejected_owner',
@@ -846,35 +1010,6 @@ const annonceService = {
         }
       }
 
-      if (newStatus === 'publiee' && data?.owner_id) {
-        try {
-          const promotionSharePayload = buildPromotionSharePayload(data, window.location?.origin);
-
-          await notificationService?.createNotification(
-            data?.owner_id,
-            notificationService?.TYPES?.ANNONCE_APPROVED || 'annonce_approved',
-            {
-              promotion_ready: true,
-              annonce_id: data?.id,
-              annonce_title: data?.titre || data?.title || 'Votre annonce',
-              image_url: promotionSharePayload?.imageUrl,
-              share_url: promotionSharePayload?.url,
-              share_title: promotionSharePayload?.title,
-              share_description: promotionSharePayload?.description,
-              actionLink: construireUrlAnnonce(data),
-              actionLabel: "Voir l'annonce",
-              social_networks: getSocialPromotionNetworks()?.map((network) => network?.id)
-            },
-            {
-              title: 'Annonce validee',
-              message: 'Votre annonce est en ligne. Partagez-la sur vos reseaux pour augmenter sa visibilite.'
-            }
-          );
-        } catch (notificationError) {
-          console.warn('Annonce validee mais notification de promotion impossible:', notificationError?.message || notificationError);
-        }
-      }
-
       if (newStatus === 'refusee' && data?.owner_id) {
         try {
           await notificationService?.createNotification(
@@ -885,15 +1020,15 @@ const annonceService = {
               annonce_title: data?.titre || data?.title || 'Votre annonce',
               actionLink: `/creer-annonce?edit=${data?.id}`,
               actionLabel: "Corriger l'annonce",
-              message: moderationReason || "Votre annonce n'a pas pu etre validee."
+              message: moderationReason || "Votre annonce n'a pas pu être validée."
             },
             {
-              title: 'Annonce refusee',
-              message: moderationReason || "Votre annonce n'a pas pu etre validee."
+              title: 'Annonce refusée',
+              message: moderationReason || "Votre annonce n'a pas pu être validée."
             }
           );
         } catch (notificationError) {
-          console.warn('Annonce refusee mais notification utilisateur impossible:', notificationError?.message || notificationError);
+          console.warn('Annonce refusée mais notification utilisateur impossible :', notificationError?.message || notificationError);
         }
       }
 
@@ -924,6 +1059,93 @@ const annonceService = {
     } catch (error) {
       console.error('Erreur lors de la récupération des annonces utilisateur :', error);
       throw error;
+    }
+  },
+
+  getUserAnnonceCount: async (userId) => {
+    try {
+      const { count, error } = await supabase
+        ?.from('annonces')
+        ?.select('id', { count: 'exact', head: true })
+        ?.eq('owner_id', userId);
+
+      if (error) {
+        if (error?.code === 'PGRST116') return { data: 0, error: null };
+        if (isSchemaError(error)) {
+          console.error('Erreur de schéma dans getUserAnnonceCount:', error?.message);
+          throw error;
+        }
+        return { data: null, error };
+      }
+
+      return { data: count ?? 0, error: null };
+    } catch (error) {
+      console.error('Erreur lors du comptage des annonces utilisateur :', error);
+      throw error;
+    }
+  },
+
+  registerAnnonceForReferenceTest: async ({
+    sessionId,
+    annonce,
+    ownerEmail = '',
+    existingContext = {}
+  } = {}) => {
+    try {
+      if (!sessionId || !annonce) {
+        return { data: null, error: null };
+      }
+
+      const context = buildMirrorListingContext(annonce, ownerEmail, existingContext);
+      const { data, error } = await userTestingService?.updateReferenceMirrorContext(
+        sessionId,
+        context
+      );
+
+      if (error) throw error;
+      return {
+        data: data || context,
+        error: null
+      };
+    } catch (error) {
+      return { data: null, error };
+    }
+  },
+
+  syncUserAnnoncesForReferenceTest: async ({
+    sessionId,
+    userId,
+    ownerEmail = '',
+    existingContext = {}
+  } = {}) => {
+    try {
+      if (!sessionId || !userId) {
+        return { data: null, error: null };
+      }
+
+      const { data: annonces, error: annoncesError } = await annonceService?.getUserAnnonces(userId);
+      if (annoncesError) throw annoncesError;
+
+      const publishedAnnonces = (annonces || []).filter(isAnnoncePublishedForTest);
+      const context = buildMirrorListingsContext(
+        publishedAnnonces,
+        ownerEmail,
+        existingContext,
+        { replaceExisting: true }
+      );
+
+      const { data, error } = await userTestingService?.updateReferenceMirrorContext(
+        sessionId,
+        context
+      );
+
+      if (error) throw error;
+      return {
+        data: data || context,
+        error: null
+      };
+    } catch (error) {
+      return { data: null, error };
     }
   },
 
@@ -985,6 +1207,7 @@ const annonceService = {
 };
 
 export default annonceService;
+
 
 
 

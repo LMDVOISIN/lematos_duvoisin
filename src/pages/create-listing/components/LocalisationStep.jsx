@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import Input from '../../../components/ui/Input';
+import CommuneAutocompleteFields from '../../../components/ui/CommuneAutocompleteFields';
 import Icon from '../../../components/AppIcon';
 import { Checkbox } from '../../../components/ui/Checkbox';
 import { useAuth } from '../../../contexts/AuthContext';
@@ -67,7 +68,7 @@ const LocalisationStep = ({ formData, updateFormData, errors }) => {
 
   return (
     <div className="space-y-6">
-      <div>
+      <div className="hidden">
         <h2 className="text-xl font-semibold text-foreground mb-2">Localisation</h2>
         <p className="text-sm text-muted-foreground">Indiquez où se trouve votre matériel</p>
       </div>
@@ -126,6 +127,31 @@ const LocalisationStep = ({ formData, updateFormData, errors }) => {
         required
       />
 
+      <CommuneAutocompleteFields
+        cityValue={formData?.city}
+        postalCodeValue={formData?.postalCode}
+        onCityChange={(value) => updateFormData('city', value)}
+        onPostalCodeChange={(value) => updateFormData('postalCode', value)}
+        cityError={errors?.city}
+        postalCodeError={errors?.postalCode}
+        cityName="city"
+        postalCodeName="postalCode"
+        cityRequired
+        postalCodeRequired
+        disabled={sourceAdresse === 'profile'}
+        rememberCity
+        cityDescription={
+          sourceAdresse === 'profile'
+            ? 'Ville reprise depuis votre profil'
+            : 'Choisissez la commune pour fiabiliser la localisation de votre annonce.'
+        }
+        postalCodeDescription={
+          sourceAdresse === 'profile'
+            ? 'Code postal repris depuis votre profil'
+            : 'Le code postal est complete automatiquement avec la commune choisie.'
+        }
+      />
+
       {/* Emplacement de la carte */}
       <LocalisationMapPreview
         address={formData?.address}
@@ -154,8 +180,23 @@ const LocalisationStep = ({ formData, updateFormData, errors }) => {
         }}
       />
 
+      <div className="grid gap-3 md:grid-cols-3">
+        {[
+          'Seule une zone approximative est visible publiquement',
+          "L'adresse exacte reste privée jusqu'à la réservation",
+          'Un point de rencontre alternatif reste possible'
+        ]?.map((item) => (
+          <div
+            key={item}
+            className="rounded-2xl border border-[#17a2b8]/15 bg-[#ecfeff] px-4 py-3 text-sm font-medium text-[#0f4d7a]"
+          >
+            {item}
+          </div>
+        ))}
+      </div>
+
       {/* Informations de confidentialite */}
-      <div className="bg-[#17a2b8]/10 border border-[#17a2b8]/20 rounded-lg p-4">
+      <div className="hidden bg-[#17a2b8]/10 border border-[#17a2b8]/20 rounded-lg p-4">
         <div className="flex gap-2">
           <Icon name="Shield" size={18} className="text-[#17a2b8] flex-shrink-0 mt-0.5" />
           <div>

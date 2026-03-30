@@ -317,7 +317,7 @@ const messageService = {
       if (isSchemaError(error)) {
         return {
           data: null,
-          error: { message: 'Messagerie indisponible temporairement. Reessayez dans quelques instants.' }
+          error: { message: 'Messagerie indisponible temporairement. Réessayez dans quelques instants.' }
         };
       }
       return { data: null, error: { message: error?.message || "Impossible d'ouvrir le chat pour le moment." } };

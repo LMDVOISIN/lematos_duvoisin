@@ -6,6 +6,7 @@ import Image from '../../../components/AppImage';
 import reservationService from '../../../services/reservationService';
 import { useAuth } from '../../../contexts/AuthContext';
 import toast from 'react-hot-toast';
+import { isReservationPaymentConfirmed } from '../../../utils/reservationStatus';
 
 const normalizeDateOnly = (value) => {
   const parsedDate = value ? new Date(value) : null;
@@ -17,14 +18,18 @@ const normalizeDateOnly = (value) => {
 
 const getDisplayStatus = (reservation) => {
   const rawStatus = String(reservation?.status || '')?.toLowerCase();
-  if (rawStatus === 'accepted') return 'pending';
+  if (['pending', 'accepted']?.includes(rawStatus)) {
+    return isReservationPaymentConfirmed(reservation) ? 'paid' : 'pending';
+  }
   if (rawStatus !== 'completed') return rawStatus || 'pending';
 
   const today = normalizeDateOnly(new Date());
   const startDate = normalizeDateOnly(reservation?.start_date);
   const endDate = normalizeDateOnly(reservation?.end_date);
 
-  if (startDate && today && startDate > today) return 'accepted';
+  if (startDate && today && startDate > today) {
+    return isReservationPaymentConfirmed(reservation) ? 'paid' : 'pending';
+  }
   if (endDate && today && endDate >= today) return 'active';
 
   return 'completed';
@@ -111,14 +116,14 @@ const ReservationsTab = () => {
   const getStatusConfig = (status) => {
     const configs = {
       pending: {
-        label: 'A payer',
+        label: 'Non finalisée',
         icon: 'Clock',
         color: 'text-warning bg-warning/10'
       },
       accepted: {
-        label: 'A payer',
-        icon: 'CheckCircle',
-        color: 'text-success bg-success/10'
+        label: 'Non finalisée',
+        icon: 'Clock',
+        color: 'text-warning bg-warning/10'
       },
       paid: {
         label: 'Payée',
@@ -150,7 +155,7 @@ const ReservationsTab = () => {
 
   const filters = [
     { id: 'all', label: 'Toutes' },
-    { id: 'pending', label: 'A payer' },
+    { id: 'pending', label: 'Non finalisées' },
     { id: 'active', label: 'En cours' },
     { id: 'completed', label: 'Terminées' }
   ];

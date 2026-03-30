@@ -165,7 +165,7 @@ const AdminInspectionDisputes = () => {
       });
     } catch (error) {
       console.error('Erreur chargement moderation litiges EDL:', error);
-      setErrorMessage(error?.message || "Impossible de charger les litiges d'etat des lieux.");
+      setErrorMessage(error?.message || "Impossible de charger les litiges d'état des lieux.");
     } finally {
       setLoading(false);
     }
@@ -240,7 +240,7 @@ const AdminInspectionDisputes = () => {
       setSuccessMessage(`Litige #${disputeId} modéré (${draft?.decision}).`);
       refresh();
     } catch (error) {
-      console.error('Erreur modÃ©ration litige EDL:', error);
+      console.error('Erreur de modération du litige EDL:', error);
       setErrorMessage(error?.message || 'Action de modération impossible.');
     } finally {
       setBusyDisputeId(null);
@@ -261,7 +261,7 @@ const AdminInspectionDisputes = () => {
         <div className="bg-white rounded-lg shadow-elevation-1 p-5 mb-6">
           <div className="flex items-start justify-between gap-4 flex-wrap">
             <div>
-              <h1 className="text-2xl md:text-3xl font-bold text-foreground">Moderation des litiges d'etat des lieux</h1>
+              <h1 className="text-2xl md:text-3xl font-bold text-foreground">Modération des litiges d'état des lieux</h1>
               <p className="text-muted-foreground mt-2">
                 Arbitrage interne: moderation des litiges sur la base des photos officielles et des traces techniques associees.
               </p>
@@ -360,7 +360,7 @@ const AdminInspectionDisputes = () => {
 
                       <div className="rounded-lg border border-border p-4">
                         <div className="flex items-center justify-between gap-2 mb-3">
-                          <h3 className="font-semibold">Photos selectionnees</h3>
+                          <h3 className="font-semibold">Photos sélectionnées</h3>
                           <span className="text-xs text-muted-foreground">{selectedPhotos.length} photo(s)</span>
                         </div>
                         {selectedPhotos.length === 0 ? (
