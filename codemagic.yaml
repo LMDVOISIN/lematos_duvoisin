@@ -1,6 +1,6 @@
 workflows:
   ios-build:
-    name: iOS Unsigned XCArchive Build
+    name: iOS Unsigned XCArchive + Sideloadly IPA
     max_build_duration: 60
     instance_type: mac_mini_m2
 
@@ -36,8 +36,16 @@ workflows:
             CODE_SIGNING_REQUIRED=NO \
             archive | tee /tmp/xcodebuild_logs/xcodebuild-archive.log
 
+      - name: Package unsigned IPA for Sideloadly
+        script: |
+          rm -rf /tmp/sideloadly_export
+          mkdir -p /tmp/sideloadly_export/Payload
+          cp -R "$CM_BUILD_DIR/App.xcarchive/Products/Applications/App.app" /tmp/sideloadly_export/Payload/
+          ditto -c -k --keepParent /tmp/sideloadly_export/Payload "$CM_BUILD_DIR/App-sideloadly.ipa"
+
     artifacts:
       - $CM_BUILD_DIR/App.xcarchive
+      - $CM_BUILD_DIR/App-sideloadly.ipa
       - /tmp/xcodebuild_logs/*.log
 
   ios-build-ipa:
