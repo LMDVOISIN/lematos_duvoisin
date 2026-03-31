@@ -98,6 +98,7 @@ function buildStaticUrls(siteUrl, nowIso) {
     '/demandes-publiques',
     '/foire-questions',
     '/couverture-assurance',
+    '/support',
     '/legal/mentions-legales',
     '/legal/cgu',
     '/legal/cgv',
