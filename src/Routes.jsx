@@ -52,6 +52,7 @@ const CGU = React.lazy(() => import('./pages/legal/cgu'));
 const CGV = React.lazy(() => import('./pages/legal/cgv'));
 const PolitiqueConfidentialite = React.lazy(() => import('./pages/legal/politique-confidentialite'));
 const PolitiqueCookies = React.lazy(() => import('./pages/legal/politique-cookies'));
+const SupportPage = React.lazy(() => import('./pages/support'));
 const ReservationManagementDashboard = React.lazy(() => import('./pages/reservation-management-dashboard'));
 const DocumentVerificationAdmin = React.lazy(() => import('./pages/document-verification-admin'));
 const CreateDemandRequest = React.lazy(() => import('./pages/create-demand-request'));
@@ -262,6 +263,7 @@ const Routes = () => {
         <Route path="/couverture-assurance" element={withRouteVerification("insurance-coverage", withTestMode(<InsuranceCoverage />))} />
         <Route path="/centre-notifications" element={withRouteVerification("notifications-center", withTestMode(<NotificationsCenter />))} />
         <Route path="/foire-questions" element={withRouteVerification("faq", withTestMode(<FAQPage />))} />
+        <Route path="/support" element={withRouteVerification("support", <SupportPage />)} />
         <Route path="/legal/mentions-legales" element={withRouteVerification("legal-mentions", <MentionsLegales />)} />
         <Route path="/legal/cgu" element={withRouteVerification("legal-cgu", <CGU />)} />
         <Route path="/legal/cgv" element={withRouteVerification("legal-cgv", <CGV />)} />
@@ -315,6 +317,7 @@ const Routes = () => {
         <Route path="/notifications-center" element={<Navigate to="/centre-notifications" replace />} />
         <Route path="/notifications" element={<Navigate to="/centre-notifications" replace />} />
         <Route path="/faq" element={<Navigate to="/foire-questions" replace />} />
+        <Route path="/contact" element={<Navigate to="/support" replace />} />
         <Route path="/settings" element={<Navigate to={ACCOUNT_SECTION_PATHS.settings} replace />} />
         <Route path="/stripe-connect-onboarding" element={<Navigate to="/coordonnees-versement" replace />} />
         <Route path="/mentions-legales" element={<Navigate to="/legal/mentions-legales" replace />} />

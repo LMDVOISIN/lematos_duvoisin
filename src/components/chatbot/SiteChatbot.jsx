@@ -18,6 +18,7 @@ const STORAGE_KEY = 'siteChatbotConversationV2';
 const MAX_STORED_MESSAGES = 18;
 const CHAT_PROVIDER = 'GEMINI';
 const CHAT_MODEL = 'gemini/gemini-2.5-flash';
+const CHATBOT_OPEN_EVENT = 'ldv:chatbot-open';
 
 const WELCOME_TEXT =
   "Bonjour, je suis là pour vous aider sur Le Matos Du Voisin. Vous pouvez me poser une question sur une annonce, une réservation, un paiement ou les règles publiques de la plateforme.";
@@ -95,6 +96,23 @@ function trimConversation(messages) {
   return normalizeStoredMessages(messages).slice(-MAX_STORED_MESSAGES);
 }
 
+function shouldAutoOpenFromLocation() {
+  if (typeof window === 'undefined') return false;
+
+  const pathname = String(window.location?.pathname || '').trim().toLowerCase();
+  const searchParams = new URLSearchParams(window.location?.search || '');
+  const chatParam = String(searchParams.get('chat') || '').trim().toLowerCase();
+  const supportParam = String(searchParams.get('support') || '').trim().toLowerCase();
+
+  return (
+    pathname === '/support'
+    || pathname === '/contact'
+    || chatParam === 'open'
+    || chatParam === '1'
+    || supportParam === 'chat'
+  );
+}
+
 function buildModelMessages(history, knowledgeContext) {
   const recentMessages = (history || [])
     .filter((item) => item?.role === 'user' || item?.role === 'assistant')
@@ -131,6 +149,25 @@ const SiteChatbot = () => {
   useEffect(() => {
     persistConversation(messages);
   }, [messages]);
+
+  useEffect(() => {
+    if (shouldAutoOpenFromLocation()) {
+      setIsOpen(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+
+    const handleOpenChatbot = () => {
+      setIsOpen(true);
+    };
+
+    window.addEventListener(CHATBOT_OPEN_EVENT, handleOpenChatbot);
+    return () => {
+      window.removeEventListener(CHATBOT_OPEN_EVENT, handleOpenChatbot);
+    };
+  }, []);
 
   useEffect(() => {
     if (!messagesViewportRef.current) return;

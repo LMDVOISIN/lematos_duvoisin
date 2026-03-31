@@ -3,6 +3,7 @@ export const FOOTER_TITLE = 'Configuration du footer';
 
 const DEFAULT_LEGAL_LINKS = [
   { label: 'Mentions l\u00e9gales', to: '/legal/mentions-legales' },
+  { label: 'Assistance', to: '/support' },
   { label: 'Politique Cookies', to: '/legal/politique-temoins-connexion' },
   { label: 'Politique de confidentialit\u00e9', to: '/legal/politique-confidentialite' },
   { label: "Conditions d'utilisation", to: '/legal/cgu' },
