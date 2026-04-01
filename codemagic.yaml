@@ -9,8 +9,6 @@ workflows:
       groups:
         - app_env
       vars:
-        APPLE_TEAM_ID: 7X4BK95XBM
-        IOS_PROFILE_SPECIFIER: LMDV App Store
         XCODE_PROJECT: ios/App/App.xcodeproj
         XCODE_SCHEME: App
 
@@ -72,6 +70,8 @@ workflows:
         distribution_type: app_store
         bundle_identifier: fr.lematosduvoisin.app
       vars:
+        APPLE_TEAM_ID: 7X4BK95XBM
+        IOS_PROFILE_SPECIFIER: LMDV App Store
         XCODE_PROJECT: ios/App/App.xcodeproj
         XCODE_SCHEME: App
 
@@ -99,6 +99,8 @@ workflows:
 
       - name: Verify resolved iOS signing settings
         script: |
+          echo "APPLE_TEAM_ID=$APPLE_TEAM_ID"
+          echo "IOS_PROFILE_SPECIFIER=$IOS_PROFILE_SPECIFIER"
           xcodebuild -project "$CM_BUILD_DIR/$XCODE_PROJECT" \
             -scheme "$XCODE_SCHEME" \
             -showBuildSettings | grep -E "PRODUCT_BUNDLE_IDENTIFIER|DEVELOPMENT_TEAM|CODE_SIGN_STYLE|PROVISIONING_PROFILE_SPECIFIER"
