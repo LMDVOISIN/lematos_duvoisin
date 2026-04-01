@@ -9,6 +9,8 @@ workflows:
       groups:
         - app_env
       vars:
+        APPLE_TEAM_ID: 7X4BK95XBM
+        IOS_PROFILE_SPECIFIER: LMDV App Store
         XCODE_PROJECT: ios/App/App.xcodeproj
         XCODE_SCHEME: App
 
@@ -95,11 +97,18 @@ workflows:
         script: |
           xcode-project use-profiles --project "$CM_BUILD_DIR/$XCODE_PROJECT"
 
+      - name: Verify resolved iOS signing settings
+        script: |
+          xcodebuild -project "$CM_BUILD_DIR/$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -showBuildSettings | grep -E "PRODUCT_BUNDLE_IDENTIFIER|DEVELOPMENT_TEAM|CODE_SIGN_STYLE|PROVISIONING_PROFILE_SPECIFIER"
+
       - name: Build signed IPA
         script: |
           xcode-project build-ipa \
             --project "$CM_BUILD_DIR/$XCODE_PROJECT" \
-            --scheme "$XCODE_SCHEME"
+            --scheme "$XCODE_SCHEME" \
+            --archive-xcargs "DEVELOPMENT_TEAM=$APPLE_TEAM_ID PROVISIONING_PROFILE_SPECIFIER=\"$IOS_PROFILE_SPECIFIER\""
 
     artifacts:
       - build/ios/ipa/*.ipa
