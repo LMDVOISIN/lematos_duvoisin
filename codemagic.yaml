@@ -71,7 +71,7 @@ workflows:
         bundle_identifier: fr.lematosduvoisin.app
       vars:
         APPLE_TEAM_ID: 7X4BK95XBM
-        IOS_PROFILE_SPECIFIER: LMDV App Store
+        IOS_BUNDLE_ID: fr.lematosduvoisin.app
         XCODE_PROJECT: ios/App/App.xcodeproj
         XCODE_SCHEME: App
 
@@ -93,24 +93,78 @@ workflows:
         script: |
           npx cap sync ios
 
+      - name: Resolve installed provisioning profile
+        script: |
+          set -euo pipefail
+
+          PROFILES_HOME="$HOME/Library/MobileDevice/Provisioning Profiles"
+          MATCHED_PROFILE_PATH=""
+          MATCHED_PROFILE_NAME=""
+          MATCHED_PROFILE_UUID=""
+          MATCHED_TEAM_ID=""
+          EXPECTED_APP_ID="$APPLE_TEAM_ID.$IOS_BUNDLE_ID"
+
+          echo "Looking for provisioning profile matching $EXPECTED_APP_ID"
+
+          for profile in "$PROFILES_HOME"/*.mobileprovision; do
+            [ -e "$profile" ] || continue
+
+            decoded_plist="$(mktemp)"
+            security cms -D -i "$profile" > "$decoded_plist"
+
+            profile_name="$(/usr/libexec/PlistBuddy -c 'Print :Name' "$decoded_plist" 2>/dev/null || true)"
+            profile_uuid="$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$decoded_plist" 2>/dev/null || true)"
+            team_id="$(/usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' "$decoded_plist" 2>/dev/null || true)"
+            application_identifier="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' "$decoded_plist" 2>/dev/null || true)"
+
+            echo "Found profile: name=$profile_name uuid=$profile_uuid team=$team_id app_id=$application_identifier"
+
+            if [ "$application_identifier" = "$EXPECTED_APP_ID" ]; then
+              MATCHED_PROFILE_PATH="$profile"
+              MATCHED_PROFILE_NAME="$profile_name"
+              MATCHED_PROFILE_UUID="$profile_uuid"
+              MATCHED_TEAM_ID="$team_id"
+              rm -f "$decoded_plist"
+              break
+            fi
+
+            rm -f "$decoded_plist"
+          done
+
+          if [ -z "$MATCHED_PROFILE_PATH" ]; then
+            echo "No installed provisioning profile matched $EXPECTED_APP_ID"
+            exit 1
+          fi
+
+          {
+            echo "RESOLVED_PROFILE_PATH=$MATCHED_PROFILE_PATH"
+            echo "RESOLVED_PROFILE_NAME=$MATCHED_PROFILE_NAME"
+            echo "RESOLVED_PROFILE_UUID=$MATCHED_PROFILE_UUID"
+            echo "RESOLVED_TEAM_ID=$MATCHED_TEAM_ID"
+          } >> "$CM_ENV"
+
       - name: Set up iOS code signing
         script: |
-          xcode-project use-profiles --project "$CM_BUILD_DIR/$XCODE_PROJECT"
+          xcode-project use-profiles \
+            --project "$CM_BUILD_DIR/$XCODE_PROJECT" \
+            --profile "$RESOLVED_PROFILE_PATH"
 
       - name: Verify resolved iOS signing settings
         script: |
-          echo "APPLE_TEAM_ID=$APPLE_TEAM_ID"
-          echo "IOS_PROFILE_SPECIFIER=$IOS_PROFILE_SPECIFIER"
+          echo "RESOLVED_PROFILE_PATH=$RESOLVED_PROFILE_PATH"
+          echo "RESOLVED_PROFILE_NAME=$RESOLVED_PROFILE_NAME"
+          echo "RESOLVED_PROFILE_UUID=$RESOLVED_PROFILE_UUID"
+          echo "RESOLVED_TEAM_ID=$RESOLVED_TEAM_ID"
           xcodebuild -project "$CM_BUILD_DIR/$XCODE_PROJECT" \
             -scheme "$XCODE_SCHEME" \
-            -showBuildSettings | grep -E "PRODUCT_BUNDLE_IDENTIFIER|DEVELOPMENT_TEAM|CODE_SIGN_STYLE|PROVISIONING_PROFILE_SPECIFIER"
+            -showBuildSettings | grep -E "PRODUCT_BUNDLE_IDENTIFIER|DEVELOPMENT_TEAM|CODE_SIGN_STYLE|PROVISIONING_PROFILE_SPECIFIER|PROVISIONING_PROFILE"
 
       - name: Build signed IPA
         script: |
           xcode-project build-ipa \
             --project "$CM_BUILD_DIR/$XCODE_PROJECT" \
             --scheme "$XCODE_SCHEME" \
-            --archive-xcargs "DEVELOPMENT_TEAM=$APPLE_TEAM_ID PROVISIONING_PROFILE_SPECIFIER=\"$IOS_PROFILE_SPECIFIER\""
+            --archive-xcargs "DEVELOPMENT_TEAM=$RESOLVED_TEAM_ID PROVISIONING_PROFILE=$RESOLVED_PROFILE_UUID PROVISIONING_PROFILE_SPECIFIER=\"$RESOLVED_PROFILE_NAME\" CODE_SIGN_IDENTITY=\"Apple Distribution\""
 
     artifacts:
       - build/ios/ipa/*.ipa
