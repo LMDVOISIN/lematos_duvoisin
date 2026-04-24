@@ -70,6 +70,8 @@ workflows:
         distribution_type: app_store
         bundle_identifier: fr.lematosduvoisin.app
       vars:
+        APP_STORE_APPLE_ID: 6761410380
+        APP_STORE_VERSION: 1.0
         APPLE_TEAM_ID: 7X4BK95XBM
         IOS_BUNDLE_ID: fr.lematosduvoisin.app
         XCODE_PROJECT: ios/App/App.xcodeproj
@@ -92,6 +94,58 @@ workflows:
       - name: Sync Capacitor iOS
         script: |
           npx cap sync ios
+
+      - name: Set unique iOS build number
+        script: |
+          set -euo pipefail
+
+          normalize_build_number() {
+            local raw_value="${1:-}"
+            if [[ "$raw_value" =~ ^[0-9]+$ ]]; then
+              echo "$raw_value"
+            else
+              echo "0"
+            fi
+          }
+
+          LATEST_APP_STORE_BUILD_NUMBER="$(app-store-connect get-latest-app-store-build-number "$APP_STORE_APPLE_ID" --app-store-version "$APP_STORE_VERSION" --platform IOS || true)"
+          LATEST_TESTFLIGHT_BUILD_NUMBER="$(app-store-connect get-latest-testflight-build-number "$APP_STORE_APPLE_ID" --app-store-version "$APP_STORE_VERSION" --platform IOS || true)"
+          CURRENT_PROJECT_BUILD_NUMBER="$(xcodebuild -project "$CM_BUILD_DIR/$XCODE_PROJECT" -scheme "$XCODE_SCHEME" -showBuildSettings | awk '/CURRENT_PROJECT_VERSION =/ { print $3; exit }' || true)"
+          CODEMAGIC_BUILD_NUMBER="${BUILD_NUMBER:-0}"
+          TIMESTAMP_BUILD_NUMBER="$(date -u +%y%m%d%H%M%S)"
+
+          LATEST_APP_STORE_BUILD_NUMBER="$(normalize_build_number "$LATEST_APP_STORE_BUILD_NUMBER")"
+          LATEST_TESTFLIGHT_BUILD_NUMBER="$(normalize_build_number "$LATEST_TESTFLIGHT_BUILD_NUMBER")"
+          CURRENT_PROJECT_BUILD_NUMBER="$(normalize_build_number "$CURRENT_PROJECT_BUILD_NUMBER")"
+          CODEMAGIC_BUILD_NUMBER="$(normalize_build_number "$CODEMAGIC_BUILD_NUMBER")"
+          TIMESTAMP_BUILD_NUMBER="$(normalize_build_number "$TIMESTAMP_BUILD_NUMBER")"
+
+          HIGHEST_BUILD_NUMBER=$LATEST_APP_STORE_BUILD_NUMBER
+          if [ "$LATEST_TESTFLIGHT_BUILD_NUMBER" -gt "$HIGHEST_BUILD_NUMBER" ]; then
+            HIGHEST_BUILD_NUMBER=$LATEST_TESTFLIGHT_BUILD_NUMBER
+          fi
+          if [ "$CURRENT_PROJECT_BUILD_NUMBER" -gt "$HIGHEST_BUILD_NUMBER" ]; then
+            HIGHEST_BUILD_NUMBER=$CURRENT_PROJECT_BUILD_NUMBER
+          fi
+          if [ "$CODEMAGIC_BUILD_NUMBER" -gt "$HIGHEST_BUILD_NUMBER" ]; then
+            HIGHEST_BUILD_NUMBER=$CODEMAGIC_BUILD_NUMBER
+          fi
+
+          NEXT_BUILD_NUMBER="$TIMESTAMP_BUILD_NUMBER"
+          if [ "$NEXT_BUILD_NUMBER" -le "$HIGHEST_BUILD_NUMBER" ]; then
+            NEXT_BUILD_NUMBER=$((HIGHEST_BUILD_NUMBER + 1))
+          fi
+
+          echo "Latest App Store build number: $LATEST_APP_STORE_BUILD_NUMBER"
+          echo "Latest TestFlight build number: $LATEST_TESTFLIGHT_BUILD_NUMBER"
+          echo "Current project build number: $CURRENT_PROJECT_BUILD_NUMBER"
+          echo "Codemagic workflow build number: $CODEMAGIC_BUILD_NUMBER"
+          echo "Timestamp-derived build number: $TIMESTAMP_BUILD_NUMBER"
+          echo "Using next iOS build number: $NEXT_BUILD_NUMBER"
+
+          cd "$CM_BUILD_DIR/ios/App"
+          agvtool new-version -all "$NEXT_BUILD_NUMBER"
+          echo "Applied iOS build number: $(xcodebuild -project "$CM_BUILD_DIR/$XCODE_PROJECT" -scheme "$XCODE_SCHEME" -showBuildSettings | awk '/CURRENT_PROJECT_VERSION =/ { print $3; exit }')"
 
       - name: Resolve installed provisioning profile
         script: |

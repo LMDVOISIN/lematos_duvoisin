@@ -43,6 +43,10 @@
 	<string>Permet de prendre des photos pour les annonces et les documents d'identite.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Permet de proposer des annonces et recherches proches de votre position.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Permet d'afficher des annonces et recherches proches de votre position lorsque vous utilisez l'application.</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>Permet d'afficher des annonces et recherches proches de votre position lorsque vous utilisez l'application.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Permet de choisir des photos depuis votre bibliotheque pour les annonces et documents.</string>
 	<key>UILaunchStoryboardName</key>
