@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import Icon from '../../../components/AppIcon';
 import authService from '../../../services/authService';
 import {
@@ -60,24 +60,6 @@ const FacebookLogo = ({ className = '' }) => (
   </svg>
 );
 
-const AppleLogo = ({ className = '' }) => (
-  <svg
-    viewBox="0 0 24 24"
-    aria-hidden="true"
-    className={className}
-    xmlns="http://www.w3.org/2000/svg"
-  >
-    <path
-      d="M16.365 12.449c.023 2.432 2.136 3.24 2.16 3.25-.018.057-.338 1.151-1.111 2.283-.668.976-1.361 1.948-2.452 1.968-1.073.02-1.417-.636-2.643-.636-1.226 0-1.609.616-2.624.656-1.053.039-1.855-1.056-2.529-2.028-1.377-1.991-2.43-5.63-1.015-8.086.702-1.219 1.957-1.99 3.32-2.01 1.033-.02 2.008.693 2.64.693.632 0 1.819-.857 3.064-.732.522.022 1.986.211 2.926 1.585-.076.047-1.754 1.025-1.736 3.057Z"
-      fill="currentColor"
-    />
-    <path
-      d="M14.36 6.501c.56-.677.938-1.619.835-2.56-.806.033-1.781.538-2.359 1.214-.519.603-.973 1.564-.852 2.486.899.069 1.818-.463 2.376-1.14Z"
-      fill="currentColor"
-    />
-  </svg>
-);
-
 const SOCIAL_PROVIDER_CONFIG = {
   google: {
     label: 'Google',
@@ -90,12 +72,6 @@ const SOCIAL_PROVIDER_CONFIG = {
     className: 'border-[#cfe0ff] bg-[#f4f8ff] text-[#1664d9] hover:bg-[#ebf3ff]',
     logoWrapperClassName: 'bg-[#1877F2] text-white',
     logoClassName: 'h-5 w-5'
-  },
-  apple: {
-    label: 'Apple',
-    className: 'border-slate-950 bg-slate-950 text-white hover:bg-black',
-    logoWrapperClassName: 'bg-white/12 text-white',
-    logoClassName: 'h-5 w-5'
   }
 };
 
@@ -105,8 +81,6 @@ const renderProviderLogo = (provider, className) => {
       return <GoogleLogo className={className} />;
     case 'facebook':
       return <FacebookLogo className={className} />;
-    case 'apple':
-      return <AppleLogo className={className} />;
     default:
       return null;
   }
@@ -114,6 +88,7 @@ const renderProviderLogo = (provider, className) => {
 
 const SocialAuth = () => {
   const location = useLocation();
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(INITIAL_LOADING_STATE);
   const [error, setError] = useState(null);
   const [enabledProviders, setEnabledProviders] = useState(INITIAL_PROVIDER_STATE);
@@ -153,7 +128,7 @@ const SocialAuth = () => {
       const redirectAfterAuth = resolveAuthRedirectPath(location, '/accueil-recherche');
       storeAuthRedirectPath(redirectAfterAuth);
 
-      const { error: oauthError } = await authService?.signInWithOAuth(normalizedProvider);
+      const { data, error: oauthError } = await authService?.signInWithOAuth(normalizedProvider);
 
       if (oauthError) {
         clearAuthRedirectPath();
@@ -163,9 +138,19 @@ const SocialAuth = () => {
             `${provider} n'est pas active dans Supabase. Activez ce fournisseur dans Authentication > Providers.`
           );
         } else {
-          setError(`Impossible de se connecter avec ${provider}. Verifiez la configuration du fournisseur.`);
+          setError(
+            oauthError?.message
+            || `Impossible de se connecter avec ${provider}. Verifiez la configuration du fournisseur.`
+          );
         }
         setLoading((prev) => ({ ...prev, [normalizedProvider]: false }));
+        return;
+      }
+
+      if (data?.completedInApp) {
+        clearAuthRedirectPath();
+        setLoading((prev) => ({ ...prev, [normalizedProvider]: false }));
+        navigate(redirectAfterAuth, { replace: true });
       }
     } catch (err) {
       clearAuthRedirectPath();
@@ -183,24 +168,11 @@ const SocialAuth = () => {
 
   return (
     <div className="space-y-3 md:space-y-4">
-      {hasSocialProviders && (
-        <div className="relative">
-          <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t border-border"></div>
-          </div>
-          <div className="relative flex justify-center text-sm">
-            <span className="rounded-full border border-slate-200 bg-white px-4 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-              ou continuer avec
-            </span>
-          </div>
-        </div>
-      )}
-
-      {error && (
+      {error ? (
         <div className="rounded-lg border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">
           {error}
         </div>
-      )}
+      ) : null}
 
       {hasSocialProviders ? (
         <>
@@ -208,39 +180,35 @@ const SocialAuth = () => {
             {isAppleEnabled ? (
               <div className="space-y-2">
                 <p className="text-center text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                  Option équivalente requise
+                  Sign in with Apple
                 </p>
                 <button
                   type="button"
                   onClick={() => handleSocialLogin('apple')}
                   disabled={isAnyProviderLoading}
                   data-testid="auth-social-apple-primary"
-                  className={`group relative flex min-h-[58px] w-full items-center justify-center gap-3 rounded-2xl border px-4 py-3 text-center shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70 ${SOCIAL_PROVIDER_CONFIG?.apple?.className || ''}`}
-                  aria-label="Se connecter avec Apple"
+                  className="group relative mx-auto flex w-full max-w-[320px] items-center justify-center gap-3 rounded-2xl border border-black bg-black px-5 py-4 text-[15px] font-semibold text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-slate-900 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70"
+                  aria-label="Sign in with Apple"
                 >
-                  <span
-                    className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${SOCIAL_PROVIDER_CONFIG?.apple?.logoWrapperClassName || ''}`}
-                  >
-                    {renderProviderLogo('apple', SOCIAL_PROVIDER_CONFIG?.apple?.logoClassName)}
-                  </span>
-
-                  <span className="min-w-0 text-sm font-semibold leading-5 sm:text-[15px]">
-                    Continuer avec Apple
-                  </span>
+                  <Icon name="BrandApple" size={19} className="text-white" />
+                  <span>Continuer avec Apple</span>
 
                   {loading?.apple ? (
-                    <span className="absolute right-3 top-3 flex h-5 w-5 items-center justify-center rounded-full bg-white/18">
-                      <Icon name="Loader2" size={12} className="animate-spin" />
+                    <span className="absolute inset-0 flex items-center justify-center rounded-2xl bg-black/72">
+                      <Icon name="Loader2" size={16} className="animate-spin text-white" />
                     </span>
                   ) : null}
                 </button>
+                <p className="text-center text-xs text-slate-500">
+                  Nom, e-mail et option Masquer mon e-mail via Apple.
+                </p>
               </div>
             ) : null}
 
             {secondaryProviders?.length > 0 ? (
               <div className="space-y-2">
                 <p className="text-center text-xs text-slate-500">
-                  Apple permet de partager uniquement le nom et l'e-mail, avec masquage possible.
+                  Vous pouvez aussi utiliser Google ou Facebook si vous preferez.
                 </p>
                 <p className="text-center text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
                   Autres connexions
@@ -284,8 +252,9 @@ const SocialAuth = () => {
               </div>
             ) : null}
           </div>
+
           <p className="text-center text-xs text-muted-foreground">
-            Connexion rapide avec votre compte existant. Apple est affiché en premier comme option équivalente.
+            Apple est affiche en premier comme option principale sur iOS.
           </p>
         </>
       ) : (

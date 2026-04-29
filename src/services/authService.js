@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
-import { buildAppRedirectUrl, redirectToExternalUrl, isNativeApp } from '../utils/nativeRuntime';
+import { buildAppRedirectUrl, isNativeIOSApp, redirectToExternalUrl } from '../utils/nativeRuntime';
+import { NativeAppleSignIn, isNativeAppleSignInAvailable } from '../plugins/nativeAppleSignIn';
 import { translateAuthErrorMessage } from '../utils/translateAuthErrorMessage';
 
 /**
@@ -68,6 +69,127 @@ function localizeAuthError(error, fallbackMessage) {
     ...error,
     message: translateAuthErrorMessage(error?.message, fallbackMessage)
   };
+}
+
+function localizeNativeAppleSignInError(error) {
+  if (!error) {
+    return { message: "Connexion Apple impossible pour le moment." };
+  }
+
+  const rawMessage = String(error?.message || '');
+  const normalizedMessage = rawMessage.toLowerCase();
+
+  if (error?.code === 'CANCELED' || normalizedMessage.includes('cancel')) {
+    return { ...error, message: "Connexion Apple annulee." };
+  }
+
+  if (normalizedMessage.includes('audience') || normalizedMessage.includes('client id')) {
+    return {
+      ...error,
+      message:
+        "La configuration Apple iOS est incomplete. Ajoutez l'identifiant iOS fr.lematosduvoisin.app dans Supabase > Authentication > Providers > Apple > Client IDs."
+    };
+  }
+
+  if (normalizedMessage.includes('nonce')) {
+    return {
+      ...error,
+      message: "La verification de securite Apple a echoue. Merci de reessayer."
+    };
+  }
+
+  if (normalizedMessage.includes('identity token')) {
+    return {
+      ...error,
+      message: "Apple n'a pas retourne de jeton valide. Merci de reessayer."
+    };
+  }
+
+  if (normalizedMessage.includes('plugin unavailable') || normalizedMessage.includes('module')) {
+    return {
+      ...error,
+      message:
+        "Le module natif Sign in with Apple n'est pas charge dans cette build iOS. Recompilez l'application apres synchronisation iOS."
+    };
+  }
+
+  return {
+    ...error,
+    message: translateAuthErrorMessage(rawMessage, "Connexion Apple impossible pour le moment.")
+  };
+}
+
+async function updateAppleUserMetadata(credential) {
+  const givenName = String(credential?.givenName || '')?.trim();
+  const familyName = String(credential?.familyName || '')?.trim();
+  const fullName = String(
+    credential?.fullName || [givenName, familyName]?.filter(Boolean)?.join(' ')
+  )?.trim();
+
+  if (!givenName && !familyName && !fullName) return;
+
+  try {
+    await supabase?.auth?.updateUser({
+      data: {
+        ...(fullName ? { full_name: fullName } : {}),
+        ...(givenName ? { given_name: givenName } : {}),
+        ...(familyName ? { family_name: familyName } : {})
+      }
+    });
+  } catch (error) {
+    console.warn("Impossible d'enregistrer le nom Apple dans les metadonnees utilisateur.", error);
+  }
+}
+
+async function signInWithAppleNatively() {
+  if (!isNativeIOSApp()) {
+    return {
+      data: null,
+      error: { message: "Connexion Apple native indisponible sur cette plateforme." }
+    };
+  }
+
+  if (!isNativeAppleSignInAvailable()) {
+    return {
+      data: null,
+      error: localizeNativeAppleSignInError({
+        message: 'Native Apple Sign In plugin unavailable.'
+      })
+    };
+  }
+
+  try {
+    const credential = await NativeAppleSignIn.signIn();
+    const { data, error } = await supabase?.auth?.signInWithIdToken({
+      provider: 'apple',
+      token: credential?.identityToken,
+      nonce: credential?.nonce
+    });
+
+    if (error) {
+      return {
+        data: null,
+        error: localizeNativeAppleSignInError(error)
+      };
+    }
+
+    await updateAppleUserMetadata(credential);
+
+    return {
+      data: {
+        ...(data || {}),
+        completedInApp: true,
+        provider: 'apple'
+      },
+      error: null
+    };
+  } catch (error) {
+    console.error('Erreur de connexion Apple native :', error);
+    return {
+      data: null,
+      error: localizeNativeAppleSignInError(error)
+    };
+  }
 }
 
 const authService = {
@@ -405,7 +527,8 @@ const authService = {
     return {
       data: {
         google: Boolean(external?.google),
-        facebook: Boolean(external?.facebook)
+        facebook: Boolean(external?.facebook),
+        apple: Boolean(external?.apple)
       },
       error: null
     };
@@ -416,13 +539,16 @@ const authService = {
    */
   signInWithOAuth: async (provider) => {
     try {
+      if (provider === 'apple' && isNativeIOSApp()) {
+        return await signInWithAppleNatively();
+      }
+
       const redirectTo = buildAppRedirectUrl('/auth/retour');
-      const shouldHandleRedirectManually = isNativeApp();
       const { data, error } = await supabase?.auth?.signInWithOAuth({
         provider,
         options: {
           redirectTo,
-          skipBrowserRedirect: shouldHandleRedirectManually
+          skipBrowserRedirect: true
         }
       });
 
@@ -437,10 +563,14 @@ const authService = {
         };
       }
 
-      if (shouldHandleRedirectManually && data?.url) {
-        await redirectToExternalUrl(data.url);
+      if (!data?.url) {
+        return {
+          data: null,
+          error: { message: "Aucune URL de redirection n'a ete fournie par le fournisseur." }
+        };
       }
 
+      await redirectToExternalUrl(data.url);
       return { data, error: null };
     } catch (error) {
       console.error('Erreur de connexion OAuth :', error);
