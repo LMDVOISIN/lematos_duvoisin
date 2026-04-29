@@ -18,6 +18,18 @@ const normalizeMobileBaseUrl = (value = '') => String(value || '').trim().replac
 
 export const isNativeApp = () => Capacitor.isNativePlatform();
 
+export const getNativePlatform = () => {
+  if (!isNativeApp()) return 'web';
+
+  try {
+    return String(Capacitor.getPlatform?.() || 'web').toLowerCase();
+  } catch (_error) {
+    return 'web';
+  }
+};
+
+export const isNativeIOSApp = () => getNativePlatform() === 'ios';
+
 export const getWebAppBaseUrl = () => {
   const explicitUrl = normalizeOrigin(import.meta.env?.VITE_SITE_URL || import.meta.env?.VITE_APP_URL);
   if (explicitUrl) return explicitUrl;
