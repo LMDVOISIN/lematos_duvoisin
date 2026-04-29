@@ -92,7 +92,44 @@ const Authentication = () => {
               <span className="text-sm font-semibold text-slate-950 md:text-base">Le Matos Du Voisin</span>
             </Link>
 
-            <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(420px,500px)] lg:items-start">
+            <div className="grid gap-6 lg:grid-cols-[minmax(420px,500px)_minmax(0,1fr)] lg:items-start">
+              <ActionCard className="rounded-[32px] border-white/80 bg-white/94 p-6 md:p-8">
+                <div className="space-y-5">
+                  <div className="space-y-3">
+                    <div className="flex flex-wrap gap-2">
+                      <span className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">Connexion</span>
+                      <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">Inscription</span>
+                      <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">Acces rapide</span>
+                    </div>
+                    <div>
+                      <h2 className="text-2xl font-semibold text-slate-950">Entrez ici</h2>
+                      <p className="mt-1 text-sm text-slate-600">Choisissez votre mode, puis avancez.</p>
+                    </div>
+                  </div>
+
+                  <SocialAuth />
+
+                  <div className="relative py-1">
+                    <div className="absolute inset-0 flex items-center">
+                      <div className="w-full border-t border-slate-100"></div>
+                    </div>
+                    <div className="relative flex justify-center text-sm">
+                      <span className="rounded-full border border-slate-200 bg-white px-4 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                        ou avec votre e-mail
+                      </span>
+                    </div>
+                  </div>
+
+                  <AuthTabs activeTab={activeTab} onTabChange={setActiveTab} />
+
+                  {activeTab === 'connexion' ? (
+                    <LoginForm onForgotPassword={() => setShowForgotPassword(true)} />
+                  ) : (
+                    <RegisterForm />
+                  )}
+                </div>
+              </ActionCard>
+
               <section className="space-y-5">
                 <div className="inline-flex rounded-full border border-white/70 bg-white/85 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-[#0f7081]">
                   Connexion simple
@@ -133,34 +170,6 @@ const Authentication = () => {
                   </div>
                 </ActionCard>
               </section>
-
-              <ActionCard className="rounded-[32px] border-white/80 bg-white/94 p-6 md:p-8">
-                <div className="space-y-5">
-                  <div className="space-y-3">
-                    <div className="flex flex-wrap gap-2">
-                      <span className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">Connexion</span>
-                      <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">Inscription</span>
-                      <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">Acces rapide</span>
-                    </div>
-                    <div>
-                      <h2 className="text-2xl font-semibold text-slate-950">Entrez ici</h2>
-                      <p className="mt-1 text-sm text-slate-600">Choisissez votre mode, puis avancez.</p>
-                    </div>
-                  </div>
-
-                  <AuthTabs activeTab={activeTab} onTabChange={setActiveTab} />
-
-                  {activeTab === 'connexion' ? (
-                    <LoginForm onForgotPassword={() => setShowForgotPassword(true)} />
-                  ) : (
-                    <RegisterForm />
-                  )}
-
-                  <div className="border-t border-slate-100 pt-5">
-                    <SocialAuth />
-                  </div>
-                </div>
-              </ActionCard>
             </div>
 
             <p className="mx-auto max-w-2xl text-center text-xs text-slate-500 md:text-sm">
