@@ -7,7 +7,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { ActionCard, ActionPageShell, ActionPill } from '../../components/page/ActionPageLayout';
 import demandeService from '../../services/demandeService';
 import { construireUrlDemande } from '../../utils/demandeUrl';
-import { getCategoryLabel } from '../create-listing/constants/categoryOptions';
+import { findCategoryOption } from '../create-listing/constants/categoryOptions';
 import LocationMap from '../equipment-detail/components/LocationMap';
 import ShareButtons from '../equipment-detail/components/ShareButtons';
 
@@ -213,7 +213,8 @@ const PublicDemandDetail = () => {
   }, [id, user?.id]);
 
   const isOwner = Boolean(user?.id && demande?.user_id === user?.id);
-  const categoryLabel = getCategoryLabel(demande?.categorie_slug || demande?.categorie) || 'Demande';
+  const rawCategoryValue = demande?.categorie_slug || demande?.categorie;
+  const categoryLabel = findCategoryOption(rawCategoryValue)?.label || String(rawCategoryValue || '').trim() || 'Demande';
   const subcategoryLabel = demande?.library_image?.subcategoryLabel || demande?.requested_subcategory_name || '';
   const zoneLabel = [demande?.ville, demande?.code_postal]?.filter(Boolean)?.join(' ') || 'Zone de recherche non precisee';
   const detailSections = useMemo(
