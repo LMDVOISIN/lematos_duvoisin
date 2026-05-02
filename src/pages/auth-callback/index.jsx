@@ -136,7 +136,7 @@ const AuthCallback = () => {
                   Authentification
                 </div>
                 <div className="mt-6 space-y-3">
-                  <h1 className="text-3xl font-semibold leading-tight text-slate-950 md:text-4xl">
+                  <h1 className="text-2xl font-semibold leading-tight text-slate-950 md:text-4xl">
                     On verifie votre connexion puis on vous remet sur les rails
                   </h1>
                   <p className="max-w-md text-sm text-slate-600 md:text-base">
@@ -144,7 +144,7 @@ const AuthCallback = () => {
                   </p>
                 </div>
 
-                <div className="mt-6 grid gap-3 sm:grid-cols-3 md:grid-cols-1">
+                <div className="mt-6 hidden gap-3 md:grid md:grid-cols-1">
                   {[
                     ['1. Verifier', 'Session'],
                     ['2. Valider', 'Connexion'],

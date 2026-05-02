@@ -167,7 +167,7 @@ const SocialAuth = () => {
   const isAppleEnabled = Boolean(enabledProviders?.apple);
 
   return (
-    <div className="space-y-3 md:space-y-4">
+    <div className="space-y-4">
       {error ? (
         <div className="rounded-lg border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">
           {error}
@@ -176,10 +176,10 @@ const SocialAuth = () => {
 
       {hasSocialProviders ? (
         <>
-          <div className="space-y-3 rounded-[22px] border border-slate-200/80 bg-white/82 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.92)]">
+          <div className="space-y-4 rounded-[22px] border border-slate-200/80 bg-white/82 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.92)]">
             {isAppleEnabled ? (
-              <div className="space-y-2">
-                <p className="text-center text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+              <div className="space-y-2.5">
+                <p className="hidden text-center text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 sm:block">
                   Sign in with Apple
                 </p>
                 <button
@@ -187,7 +187,7 @@ const SocialAuth = () => {
                   onClick={() => handleSocialLogin('apple')}
                   disabled={isAnyProviderLoading}
                   data-testid="auth-social-apple-primary"
-                  className="group relative mx-auto flex w-full max-w-[320px] items-center justify-center gap-3 rounded-2xl border border-black bg-black px-5 py-4 text-[15px] font-semibold text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-slate-900 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70"
+                  className="group relative mx-auto flex min-h-[58px] w-full max-w-[360px] items-center justify-center gap-3 rounded-2xl border border-black bg-black px-5 py-4 text-[15px] font-semibold text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-slate-900 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70"
                   aria-label="Sign in with Apple"
                 >
                   <Icon name="BrandApple" size={19} className="text-white" />
@@ -199,21 +199,21 @@ const SocialAuth = () => {
                     </span>
                   ) : null}
                 </button>
-                <p className="text-center text-xs text-slate-500">
-                  Nom, e-mail et option Masquer mon e-mail via Apple.
+                <p className="text-center text-xs text-slate-500 sm:text-[13px]">
+                  Nom, e-mail et option Masquer mon e-mail avec Apple.
                 </p>
               </div>
             ) : null}
 
             {secondaryProviders?.length > 0 ? (
               <div className="space-y-2">
-                <p className="text-center text-xs text-slate-500">
+                <p className="hidden text-center text-xs text-slate-500 sm:block">
                   Vous pouvez aussi utiliser Google ou Facebook si vous preferez.
                 </p>
-                <p className="text-center text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                <p className="hidden text-center text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 sm:block">
                   Autres connexions
                 </p>
-                <div className={`grid gap-2 ${secondaryProviders?.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                <div className={`grid gap-2 ${secondaryProviders?.length > 1 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
                   {secondaryProviders?.map((provider) => {
                     const providerConfig = SOCIAL_PROVIDER_CONFIG?.[provider] || {};
                     const isLoading = Boolean(loading?.[provider]);
@@ -252,10 +252,6 @@ const SocialAuth = () => {
               </div>
             ) : null}
           </div>
-
-          <p className="text-center text-xs text-muted-foreground">
-            Apple est affiche en premier comme option principale sur iOS.
-          </p>
         </>
       ) : (
         <p className="text-center text-xs text-muted-foreground">

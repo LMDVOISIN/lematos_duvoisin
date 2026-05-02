@@ -141,6 +141,93 @@ async function updateAppleUserMetadata(credential) {
   }
 }
 
+async function waitForAuthenticatedSession(attempts = 6, delayMs = 250) {
+  for (let index = 0; index < attempts; index += 1) {
+    try {
+      const { data, error } = await supabase?.auth?.getSession();
+      if (!error && data?.session) {
+        return data.session;
+      }
+    } catch (_error) {
+      // Ignore transient reads while the native session settles.
+    }
+
+    if (index < attempts - 1) {
+      await new Promise((resolve) => {
+        setTimeout(resolve, delayMs);
+      });
+    }
+  }
+
+  return null;
+}
+
+async function ensureAppleProfileExists(user, credential) {
+  const userId = user?.id;
+  if (!userId) return;
+
+  try {
+    const { data: existingProfile, error: existingProfileError } = await supabase
+      ?.from('profiles')
+      ?.select('id')
+      ?.eq('id', userId)
+      ?.maybeSingle();
+
+    if (existingProfileError && existingProfileError?.code !== 'PGRST116') {
+      console.warn('Verification du profil Apple impossible :', existingProfileError);
+      return;
+    }
+
+    if (existingProfile?.id) return;
+
+    const givenName = String(credential?.givenName || '')?.trim();
+    const familyName = String(credential?.familyName || '')?.trim();
+    const fullName = String(
+      credential?.fullName || [givenName, familyName]?.filter(Boolean)?.join(' ')
+    )?.trim();
+    const email = String(user?.email || credential?.email || '')?.trim() || null;
+    const pseudoFallback = String(
+      user?.user_metadata?.pseudo
+      || fullName
+      || (email ? email?.split('@')?.[0] : '')
+      || 'membre'
+    )?.trim();
+    const timestamp = new Date()?.toISOString();
+    const basePayload = {
+      id: userId,
+      pseudo: pseudoFallback,
+      email,
+      phone: null,
+      address: null,
+      city: null,
+      postal_code: null,
+      avatar_url: null,
+      is_admin: false,
+      first_name: givenName || null,
+      last_name: familyName || null,
+      created_at: timestamp,
+      updated_at: timestamp
+    };
+
+    let { error: insertError } = await supabase?.from('profiles')?.insert(basePayload);
+
+    if (
+      insertError &&
+      isSchemaError(insertError) &&
+      /column.*(first_name|last_name).*does not exist/i.test(String(insertError?.message || ''))
+    ) {
+      const { first_name, last_name, ...legacyPayload } = basePayload;
+      ({ error: insertError } = await supabase?.from('profiles')?.insert(legacyPayload));
+    }
+
+    if (insertError && insertError?.code !== '23505') {
+      console.warn("Creation de secours du profil Apple impossible :", insertError);
+    }
+  } catch (error) {
+    console.warn("Creation de secours du profil Apple impossible :", error);
+  }
+}
+
 async function signInWithAppleNatively() {
   if (!isNativeIOSApp()) {
     return {
@@ -149,7 +236,7 @@ async function signInWithAppleNatively() {
     };
   }
 
-  if (!isNativeAppleSignInAvailable()) {
+  if (!(await isNativeAppleSignInAvailable())) {
     return {
       data: null,
       error: localizeNativeAppleSignInError({
@@ -173,11 +260,24 @@ async function signInWithAppleNatively() {
       };
     }
 
+    const settledSession = data?.session || (await waitForAuthenticatedSession());
+
+    if (!settledSession?.user) {
+      return {
+        data: null,
+        error: localizeNativeAppleSignInError({
+          message: "La session Apple n'a pas pu etre finalisee."
+        })
+      };
+    }
+
     await updateAppleUserMetadata(credential);
+    await ensureAppleProfileExists(settledSession?.user, credential);
 
     return {
       data: {
         ...(data || {}),
+        session: settledSession,
         completedInApp: true,
         provider: 'apple'
       },

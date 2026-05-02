@@ -3,16 +3,19 @@ import { BrowserRouter, Routes as RouterRoutes, Route, Navigate, useParams, useL
 import ScrollToTop from "./components/ScrollToTop";
 import ErrorBoundary from "./components/ErrorBoundary";
 import CookieAwareAnalytics from "./components/cookies/CookieAwareAnalytics";
+import SiteChatbot from "./components/chatbot/SiteChatbot";
 import NativeAppUrlHandler from "./components/NativeAppUrlHandler";
 import TestModeLayout from "./components/TestModeLayout";
 import RouteVerificationMarker from "./components/verification/RouteVerificationMarker";
 import { useAuth } from "./contexts/AuthContext";
 import { isAdminAccessGranted } from "./utils/adminAccessGate";
+import { isNativeIOSApp } from "./utils/nativeRuntime";
 import {
   ACCOUNT_SECTION_PATHS,
   resolveLegacyAccountTabPath
 } from './pages/user-profile-documents/accountNavigation';
 import HomeSearch from './pages/home-search';
+import PublicDemandDetail from './pages/public-demand-detail';
 const NotFound = React.lazy(() => import("./pages/NotFound"));
 const Authentication = React.lazy(() => import('./pages/authentication'));
 const AdminAccess = React.lazy(() => import('./pages/admin-access'));
@@ -27,12 +30,14 @@ const VerificationIdentiteLocation = React.lazy(() => import('./pages/verificati
 const Messages = React.lazy(() => import('./pages/messages'));
 const UserDemandes = React.lazy(() => import('./pages/user-demandes'));
 const AdminDashboard = React.lazy(() => import('./pages/admin-dashboard'));
+const AdminPlatformSpec = React.lazy(() => import('./pages/admin-platform-spec'));
 const AdminModeration = React.lazy(() => import('./pages/admin-moderation'));
 const CreateListing = React.lazy(() => import('./pages/create-listing'));
 const PhotosEtatDesLieux = React.lazy(() => import('./pages/photos-d-tat-des-lieux'));
 const AdminUserManagement = React.lazy(() => import('./pages/admin-user-management'));
 const AdminReservationManagement = React.lazy(() => import('./pages/admin-reservation-management'));
 const AdminEmailTracking = React.lazy(() => import('./pages/admin-email-tracking'));
+const AdminSecurityScan = React.lazy(() => import('./pages/admin-security-scan'));
 const AdminTaskTracking = React.lazy(() => import('./pages/admin-task-tracking'));
 const AdminCategories = React.lazy(() => import('./pages/admin-categories'));
 const AdminObjectImageLibrary = React.lazy(() => import('./pages/admin-object-image-library'));
@@ -43,6 +48,7 @@ const AdminFAQ = React.lazy(() => import('./pages/admin-faq'));
 const AdminRentalContract = React.lazy(() => import('./pages/admin-rental-contract'));
 const AdminRetours = React.lazy(() => import('./pages/admin-feedbacks'));
 const AdminNotifications = React.lazy(() => import('./pages/admin-notifications'));
+const AdminReferenceAudit = React.lazy(() => import('./pages/admin-reference-audit'));
 const AdminModerateRequests = React.lazy(() => import('./pages/admin-moderate-requests'));
 const AdminInspectionDisputes = React.lazy(() => import('./pages/admin-inspection-disputes'));
 const AdminSignalements = React.lazy(() => import('./pages/admin-signalements'));
@@ -200,13 +206,21 @@ const withRouteVerification = (routeId, element) => (
   </RouteVerificationMarker>
 );
 
-const Routes = () => {
+const AUTH_ROUTE_PREFIXES = ['/authentification', '/auth/retour', '/reinitialiser-mot-de-passe'];
+
+const AppRouterContent = () => {
+  const location = useLocation();
+  const shouldRenderCookieAwareAnalytics = !isNativeIOSApp();
+  const currentPath = String(location?.pathname || '')?.trim()?.toLowerCase();
+  const isAuthRelatedRoute = AUTH_ROUTE_PREFIXES.some((prefix) => currentPath.startsWith(prefix));
+  const shouldRenderSiteChatbot = !isNativeIOSApp() && !isAuthRelatedRoute;
+
   return (
-    <BrowserRouter>
-      <ErrorBoundary>
+    <ErrorBoundary>
       <ScrollToTop />
       <NativeAppUrlHandler />
-      <CookieAwareAnalytics />
+      {shouldRenderCookieAwareAnalytics ? <CookieAwareAnalytics /> : null}
+      {shouldRenderSiteChatbot ? <SiteChatbot /> : null}
       <Suspense fallback={<RouteLoadingScreen />}>
       <RouterRoutes>
         {/* Define your route here */}
@@ -232,11 +246,13 @@ const Routes = () => {
         <Route path="/mes-demandes" element={withRouteVerification("user-demands", withTestMode(<UserDemandes />))} />
         <Route path="/mes-reservations" element={withRouteVerification("reservation-management", withTestMode(<ReservationManagementDashboard />))} />
         <Route path="/administration-tableau-bord" element={withRouteVerification("admin-dashboard", <AdminGuard><AdminDashboard /></AdminGuard>)} />
+        <Route path="/administration-cahier-des-charges-plateforme" element={withRouteVerification("admin-platform-spec", <AdminGuard><AdminPlatformSpec /></AdminGuard>)} />
         <Route path="/administration-resultats-essais" element={withRouteVerification("admin-test-results", <AdminGuard><AdminTestResultsDashboard /></AdminGuard>)} />
         <Route path="/administration-moderation" element={withRouteVerification("admin-moderation", <AdminGuard><AdminModeration /></AdminGuard>)} />
         <Route path="/administration-gestion-reservations" element={withRouteVerification("admin-reservation-management", <AdminGuard><AdminReservationManagement /></AdminGuard>)} />
         <Route path="/administration-gestion-utilisateurs" element={withRouteVerification("admin-user-management", <AdminGuard><AdminUserManagement /></AdminGuard>)} />
         <Route path="/administration-suivi-courriels" element={withRouteVerification("admin-email-tracking", <AdminGuard><AdminEmailTracking /></AdminGuard>)} />
+        <Route path="/administration-scan-securite" element={withRouteVerification("admin-security-scan", <AdminGuard><AdminSecurityScan /></AdminGuard>)} />
         <Route path="/administration-suivi-taches" element={withRouteVerification("admin-task-tracking", <AdminGuard><AdminTaskTracking /></AdminGuard>)} />
         <Route path="/administration-categories" element={withRouteVerification("admin-categories", <AdminGuard><AdminCategories /></AdminGuard>)} />
         <Route path="/administration-bibliotheque-images-demandes" element={withRouteVerification("admin-object-image-library", <AdminGuard><AdminObjectImageLibrary /></AdminGuard>)} />
@@ -247,6 +263,7 @@ const Routes = () => {
         <Route path="/administration-contrat-location" element={withRouteVerification("admin-rental-contract", <AdminGuard><AdminRentalContract /></AdminGuard>)} />
         <Route path="/administration-retours" element={withRouteVerification("admin-feedbacks", <AdminGuard><AdminRetours /></AdminGuard>)} />
         <Route path="/administration-notifications" element={withRouteVerification("admin-notifications", <AdminGuard><AdminNotifications /></AdminGuard>)} />
+        <Route path="/administration-audit-references" element={withRouteVerification("admin-reference-audit", <AdminGuard><AdminReferenceAudit /></AdminGuard>)} />
         <Route path="/administration-moderation-demandes" element={withRouteVerification("admin-moderate-requests", <AdminGuard><AdminModerateRequests /></AdminGuard>)} />
         <Route path="/administration-litiges-etat-des-lieux" element={withRouteVerification("admin-inspection-disputes", <AdminGuard><AdminInspectionDisputes /></AdminGuard>)} />
         <Route path="/administration-signalements" element={withRouteVerification("admin-signalements", <AdminGuard><AdminSignalements /></AdminGuard>)} />
@@ -259,6 +276,7 @@ const Routes = () => {
         <Route path="/creer-annonce" element={withRouteVerification("create-listing", withTestMode(<CreateListing />))} />
         <Route path="/creer-demande" element={withRouteVerification("create-demand-request", withTestMode(<CreateDemandRequest />))} />
         <Route path="/demandes-publiques" element={withRouteVerification("public-demands-marketplace", withTestMode(<PublicDemandsMarketplace />))} />
+        <Route path="/demandes-publiques/:slug/:id" element={withRouteVerification("public-demand-detail", withTestMode(<PublicDemandDetail />))} />
         <Route path="/photos-d-tat-des-lieux/:reservationId" element={withRouteVerification("photos-inspection", withTestMode(<PhotosEtatDesLieux />))} />
         <Route path="/couverture-assurance" element={withRouteVerification("insurance-coverage", withTestMode(<InsuranceCoverage />))} />
         <Route path="/centre-notifications" element={withRouteVerification("notifications-center", withTestMode(<NotificationsCenter />))} />
@@ -288,11 +306,13 @@ const Routes = () => {
         <Route path="/user-dashboard" element={<LegacyUserDashboardRedirect />} />
         <Route path="/admin" element={withRouteVerification("admin-access", <AdminAccess />)} />
         <Route path="/admin-dashboard" element={<Navigate to="/administration-tableau-bord" replace />} />
+        <Route path="/admin-platform-spec" element={<Navigate to="/administration-cahier-des-charges-plateforme" replace />} />
         <Route path="/admin-test-results-dashboard" element={<Navigate to="/administration-resultats-essais" replace />} />
         <Route path="/admin-moderation" element={<Navigate to="/administration-moderation" replace />} />
         <Route path="/admin-reservation-management" element={<Navigate to="/administration-gestion-reservations" replace />} />
         <Route path="/admin-user-management" element={<Navigate to="/administration-gestion-utilisateurs" replace />} />
         <Route path="/admin-email-tracking" element={<Navigate to="/administration-suivi-courriels" replace />} />
+        <Route path="/admin-security-scan" element={<Navigate to="/administration-scan-securite" replace />} />
         <Route path="/admin-task-tracking" element={<Navigate to="/administration-suivi-taches" replace />} />
         <Route path="/admin-categories" element={<Navigate to="/administration-categories" replace />} />
         <Route path="/admin-object-image-library" element={<Navigate to="/administration-bibliotheque-images-demandes" replace />} />
@@ -303,6 +323,7 @@ const Routes = () => {
         <Route path="/admin-rental-contract" element={<Navigate to="/administration-contrat-location" replace />} />
         <Route path="/admin-feedbacks" element={<Navigate to="/administration-retours" replace />} />
         <Route path="/admin-notifications" element={<Navigate to="/administration-notifications" replace />} />
+        <Route path="/admin-reference-audit" element={<Navigate to="/administration-audit-references" replace />} />
         <Route path="/admin-moderate-requests" element={<Navigate to="/administration-moderation" replace />} />
         <Route path="/admin-inspection-disputes" element={<Navigate to="/administration-litiges-etat-des-lieux" replace />} />
         <Route path="/admin-signalements" element={<Navigate to="/administration-signalements" replace />} />
@@ -336,7 +357,14 @@ const Routes = () => {
         <Route path="*" element={<NotFound />} />
       </RouterRoutes>
       </Suspense>
-      </ErrorBoundary>
+    </ErrorBoundary>
+  );
+};
+
+const Routes = () => {
+  return (
+    <BrowserRouter>
+      <AppRouterContent />
     </BrowserRouter>
   );
 };

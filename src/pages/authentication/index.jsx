@@ -96,7 +96,7 @@ const Authentication = () => {
               <ActionCard className="rounded-[32px] border-white/80 bg-white/94 p-6 md:p-8">
                 <div className="space-y-5">
                   <div className="space-y-3">
-                    <div className="flex flex-wrap gap-2">
+                    <div className="hidden flex-wrap gap-2 sm:flex">
                       <span className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">Connexion</span>
                       <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">Inscription</span>
                       <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">Acces rapide</span>
@@ -130,7 +130,7 @@ const Authentication = () => {
                 </div>
               </ActionCard>
 
-              <section className="space-y-5">
+              <section className="hidden space-y-5 lg:block">
                 <div className="inline-flex rounded-full border border-white/70 bg-white/85 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-[#0f7081]">
                   Connexion simple
                 </div>
