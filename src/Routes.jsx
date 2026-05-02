@@ -30,14 +30,12 @@ const VerificationIdentiteLocation = React.lazy(() => import('./pages/verificati
 const Messages = React.lazy(() => import('./pages/messages'));
 const UserDemandes = React.lazy(() => import('./pages/user-demandes'));
 const AdminDashboard = React.lazy(() => import('./pages/admin-dashboard'));
-const AdminPlatformSpec = React.lazy(() => import('./pages/admin-platform-spec'));
 const AdminModeration = React.lazy(() => import('./pages/admin-moderation'));
 const CreateListing = React.lazy(() => import('./pages/create-listing'));
 const PhotosEtatDesLieux = React.lazy(() => import('./pages/photos-d-tat-des-lieux'));
 const AdminUserManagement = React.lazy(() => import('./pages/admin-user-management'));
 const AdminReservationManagement = React.lazy(() => import('./pages/admin-reservation-management'));
 const AdminEmailTracking = React.lazy(() => import('./pages/admin-email-tracking'));
-const AdminSecurityScan = React.lazy(() => import('./pages/admin-security-scan'));
 const AdminTaskTracking = React.lazy(() => import('./pages/admin-task-tracking'));
 const AdminCategories = React.lazy(() => import('./pages/admin-categories'));
 const AdminObjectImageLibrary = React.lazy(() => import('./pages/admin-object-image-library'));
@@ -48,7 +46,6 @@ const AdminFAQ = React.lazy(() => import('./pages/admin-faq'));
 const AdminRentalContract = React.lazy(() => import('./pages/admin-rental-contract'));
 const AdminRetours = React.lazy(() => import('./pages/admin-feedbacks'));
 const AdminNotifications = React.lazy(() => import('./pages/admin-notifications'));
-const AdminReferenceAudit = React.lazy(() => import('./pages/admin-reference-audit'));
 const AdminModerateRequests = React.lazy(() => import('./pages/admin-moderate-requests'));
 const AdminInspectionDisputes = React.lazy(() => import('./pages/admin-inspection-disputes'));
 const AdminSignalements = React.lazy(() => import('./pages/admin-signalements'));
@@ -80,6 +77,10 @@ const RouteLoadingScreen = () => (
       <p className="text-sm text-slate-600">Chargement de la page...</p>
     </div>
   </div>
+);
+
+const AdminReleaseFallback = () => (
+  <Navigate to="/administration-tableau-bord" replace />
 );
 
 const LegacyEquipmentDetailRedirect = () => {
@@ -246,13 +247,13 @@ const AppRouterContent = () => {
         <Route path="/mes-demandes" element={withRouteVerification("user-demands", withTestMode(<UserDemandes />))} />
         <Route path="/mes-reservations" element={withRouteVerification("reservation-management", withTestMode(<ReservationManagementDashboard />))} />
         <Route path="/administration-tableau-bord" element={withRouteVerification("admin-dashboard", <AdminGuard><AdminDashboard /></AdminGuard>)} />
-        <Route path="/administration-cahier-des-charges-plateforme" element={withRouteVerification("admin-platform-spec", <AdminGuard><AdminPlatformSpec /></AdminGuard>)} />
+        <Route path="/administration-cahier-des-charges-plateforme" element={withRouteVerification("admin-platform-spec", <AdminGuard><AdminReleaseFallback /></AdminGuard>)} />
         <Route path="/administration-resultats-essais" element={withRouteVerification("admin-test-results", <AdminGuard><AdminTestResultsDashboard /></AdminGuard>)} />
         <Route path="/administration-moderation" element={withRouteVerification("admin-moderation", <AdminGuard><AdminModeration /></AdminGuard>)} />
         <Route path="/administration-gestion-reservations" element={withRouteVerification("admin-reservation-management", <AdminGuard><AdminReservationManagement /></AdminGuard>)} />
         <Route path="/administration-gestion-utilisateurs" element={withRouteVerification("admin-user-management", <AdminGuard><AdminUserManagement /></AdminGuard>)} />
         <Route path="/administration-suivi-courriels" element={withRouteVerification("admin-email-tracking", <AdminGuard><AdminEmailTracking /></AdminGuard>)} />
-        <Route path="/administration-scan-securite" element={withRouteVerification("admin-security-scan", <AdminGuard><AdminSecurityScan /></AdminGuard>)} />
+        <Route path="/administration-scan-securite" element={withRouteVerification("admin-security-scan", <AdminGuard><AdminReleaseFallback /></AdminGuard>)} />
         <Route path="/administration-suivi-taches" element={withRouteVerification("admin-task-tracking", <AdminGuard><AdminTaskTracking /></AdminGuard>)} />
         <Route path="/administration-categories" element={withRouteVerification("admin-categories", <AdminGuard><AdminCategories /></AdminGuard>)} />
         <Route path="/administration-bibliotheque-images-demandes" element={withRouteVerification("admin-object-image-library", <AdminGuard><AdminObjectImageLibrary /></AdminGuard>)} />
@@ -263,7 +264,7 @@ const AppRouterContent = () => {
         <Route path="/administration-contrat-location" element={withRouteVerification("admin-rental-contract", <AdminGuard><AdminRentalContract /></AdminGuard>)} />
         <Route path="/administration-retours" element={withRouteVerification("admin-feedbacks", <AdminGuard><AdminRetours /></AdminGuard>)} />
         <Route path="/administration-notifications" element={withRouteVerification("admin-notifications", <AdminGuard><AdminNotifications /></AdminGuard>)} />
-        <Route path="/administration-audit-references" element={withRouteVerification("admin-reference-audit", <AdminGuard><AdminReferenceAudit /></AdminGuard>)} />
+        <Route path="/administration-audit-references" element={withRouteVerification("admin-reference-audit", <AdminGuard><AdminReleaseFallback /></AdminGuard>)} />
         <Route path="/administration-moderation-demandes" element={withRouteVerification("admin-moderate-requests", <AdminGuard><AdminModerateRequests /></AdminGuard>)} />
         <Route path="/administration-litiges-etat-des-lieux" element={withRouteVerification("admin-inspection-disputes", <AdminGuard><AdminInspectionDisputes /></AdminGuard>)} />
         <Route path="/administration-signalements" element={withRouteVerification("admin-signalements", <AdminGuard><AdminSignalements /></AdminGuard>)} />
